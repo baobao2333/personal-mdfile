@@ -4,14 +4,14 @@ This folder contains sanitized Markdown skill and agent instruction files prepar
 
 ## Folders
 
-- `codex-skills` (22 files): personal Codex skills from the local Codex skills directory.
+- `codex-skills` (24 files): personal Codex skills from the local Codex skills directory.
 - `growth-agents` (7 files): file-based Growth app agent instructions.
 - `harmonyvoice-project-skills` (6 files): project-specific HarmonyVoice skills.
 - `image-split-agent` (3 files): image decomposition agent workspace instructions.
 - `openclaw-workspace-agents` (8 files): agent instruction files from the OpenClaw workspace.
 - `openclaw-workspace-skills` (24 files): skills from the OpenClaw workspace.
 
-Total packaged Markdown files: 70 folder files plus these 2 top-level index files.
+Total packaged Markdown files: 72 folder files plus these 2 top-level index files.
 
 ## Sanitization
 

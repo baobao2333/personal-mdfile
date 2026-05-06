@@ -4,14 +4,14 @@ Generated for distribution. Source paths are intentionally omitted; entries show
 
 ## Summary
 
-- `codex-skills`: 22 files
+- `codex-skills`: 24 files
 - `growth-agents`: 7 files
 - `harmonyvoice-project-skills`: 6 files
 - `image-split-agent`: 3 files
 - `openclaw-workspace-agents`: 8 files
 - `openclaw-workspace-skills`: 24 files
 
-Total packaged Markdown files: 70 folder files plus `README.md` and `MANIFEST.md`.
+Total packaged Markdown files: 72 folder files plus `README.md` and `MANIFEST.md`.
 
 ## codex-skills
 
@@ -34,6 +34,8 @@ Total packaged Markdown files: 70 folder files plus `README.md` and `MANIFEST.md
 - `playwright-interactive\SKILL.md`
 - `pua\SKILL.md`
 - `self-improving-agent\SKILL.md`
+- `standardize-online-service-ops\SKILL.md`
+- `standardize-online-service-ops\references\ops-contract.md`
 - `weibo-fresh-posts\SKILL.md`
 - `xiaohongshu-mcp-skill\SKILL.md`
 - `x-twitter-collector\SKILL.md`
