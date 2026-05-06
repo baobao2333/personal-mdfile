@@ -18,3 +18,7 @@ Total packaged Markdown files: 70 folder files plus these 2 top-level index file
 The copied files were scanned and rewritten for common sensitive patterns, including API keys, bearer tokens, GitHub/HuggingFace/npm/Slack tokens, email addresses, local Windows user paths, and project absolute paths.
 
 Before public release, do one final human review for business-private names, internal URLs, account IDs, and project-specific confidential details that generic secret patterns cannot reliably detect.
+
+## License
+
+This repository is licensed under the MIT License. See [LICENSE](LICENSE).
