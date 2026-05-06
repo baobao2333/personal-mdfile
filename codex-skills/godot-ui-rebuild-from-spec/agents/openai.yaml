@@ -1,0 +1,4 @@
+interface:
+  display_name: "按规格重建 Godot UI"
+  short_description: "把 UI 规格重建为 Godot 4 原生 Control 场景。"
+  default_prompt: "使用 $godot-ui-rebuild-from-spec，把这个 UI 规格实现成 Godot 4 原生 UI。"

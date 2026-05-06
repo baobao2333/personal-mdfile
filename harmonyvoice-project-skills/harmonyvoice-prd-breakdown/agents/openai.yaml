@@ -1,0 +1,4 @@
+interface:
+  display_name: "HarmonyVoice PRD Breakdown"
+  short_description: "Turn a PRD into a build-ready draft."
+  default_prompt: "Use $harmonyvoice-prd-breakdown to turn this HarmonyVoice PRD into a structured first-pass implementation draft without coding yet."

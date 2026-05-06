@@ -1,0 +1,4 @@
+interface:
+  display_name: "HarmonyVoice Small Iteration"
+  short_description: "Ship one tightly scoped UI pass."
+  default_prompt: "Use $harmonyvoice-small-iteration to apply only this small HarmonyVoice UI iteration from Figma without expanding scope."

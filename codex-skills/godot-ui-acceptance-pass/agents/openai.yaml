@@ -1,0 +1,4 @@
+interface:
+  display_name: "Godot UI 验收微调"
+  short_description: "对比 Godot UI 与参考稿并修复明确视觉差距。"
+  default_prompt: "使用 $godot-ui-acceptance-pass，对比这个 Godot UI 和参考稿，并修复低风险差距。"

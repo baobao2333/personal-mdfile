@@ -1,0 +1,4 @@
+interface:
+  display_name: "HarmonyVoice Code to Figma"
+  short_description: "Capture the live draft UI in Figma."
+  default_prompt: "Use $harmonyvoice-code-to-figma to bring the current HarmonyVoice draft screens into Figma as editable product frames."

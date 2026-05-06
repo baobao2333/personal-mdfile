@@ -1,0 +1,4 @@
+interface:
+  display_name: "从 HTML 提取 UI 规格"
+  short_description: "从 HTML 原型提取 Godot 可用的 UI 规格。"
+  default_prompt: "使用 $extract-ui-spec-from-html，把这个 HTML 原型转换成结构化 UI 规格。"

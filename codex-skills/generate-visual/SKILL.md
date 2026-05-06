@@ -117,7 +117,7 @@ Use node paths like:
 Run the bundled script from this skill directory:
 
 ```powershell
-python [CODEX_SKILLS_DIR]\generate-visual\scripts\generate_visual.py blueprint.json visual_output
+python [USER_HOME]\.codex\skills\generate-visual\scripts\generate_visual.py blueprint.json visual_output
 ```
 
 If you are not on this machine, resolve the path relative to the skill folder and run the same script.

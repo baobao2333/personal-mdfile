@@ -1,0 +1,4 @@
+interface:
+  display_name: "HarmonyVoice Figma to Code"
+  short_description: "Implement one Figma selection in repo."
+  default_prompt: "Use $harmonyvoice-figma-to-code to implement this HarmonyVoice Figma selection into the current repo and validate the result."

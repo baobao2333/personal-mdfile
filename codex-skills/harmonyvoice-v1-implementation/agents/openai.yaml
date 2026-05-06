@@ -1,0 +1,4 @@
+interface:
+  display_name: "HarmonyVoice V1 Implementation"
+  short_description: "Build the first runnable repo draft."
+  default_prompt: "Use $harmonyvoice-v1-implementation to build the first runnable HarmonyVoice draft from this approved implementation outline."

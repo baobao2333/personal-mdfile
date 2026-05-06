@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI 游戏 UI 出图 Brief"
+  short_description: "为 Godot 友好的游戏 UI 准备出图 brief。"
+  default_prompt: "使用 $ai-game-ui-image-brief，把这个 UI 想法整理成适合 Godot 落地的图片生成 brief。"

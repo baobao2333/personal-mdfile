@@ -1,0 +1,4 @@
+interface:
+  display_name: "HarmonyVoice Acceptance Pass"
+  short_description: "Compare PRD, Figma, and build."
+  default_prompt: "Use $harmonyvoice-acceptance-pass to run a final HarmonyVoice acceptance pass across the PRD, Figma, and current implementation."

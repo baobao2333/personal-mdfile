@@ -1,0 +1,4 @@
+interface:
+  display_name: "Standardize Online Service Ops"
+  short_description: "Apply a stable maintenance framework to online services."
+  default_prompt: "Use $standardize-online-service-ops to audit this service and plan the next safe operations change."

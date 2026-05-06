@@ -1,0 +1,40 @@
+{
+  "id": "tencent-ui-pro",
+  "name": "Tencent UI Pro",
+  "description": "基于腾讯QQ Design规范的专属前端UI生成技能，输出高审美、符合腾讯系产品风格的界面代码",
+  "version": "1.0.0",
+  "author": "OpenClaw Assistant",
+  "triggers": [
+    "腾讯UI",
+    "腾讯风格",
+    "QQ风格界面",
+    "生成前端界面",
+    "写前端代码"
+  ],
+  "capabilities": [
+    "前端界面生成",
+    "UI设计规范校验",
+    "CSS样式优化",
+    "腾讯设计规范适配"
+  ],
+  "dependencies": [
+    "frontend-design"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "theme": {
+        "type": "string",
+        "enum": ["dark", "light"],
+        "default": "dark",
+        "description": "主题模式"
+      },
+      "outputFramework": {
+        "type": "string",
+        "enum": ["html", "react", "vue"],
+        "default": "html",
+        "description": "输出代码框架"
+      }
+    }
+  }
+}

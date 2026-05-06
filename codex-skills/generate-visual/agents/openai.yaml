@@ -1,0 +1,4 @@
+interface:
+  display_name: "Godot Visual Layer"
+  short_description: "Turn mockups into Godot visual layers"
+  default_prompt: "Use $generate-visual to turn this mockup or screenshot into a Godot 4 visual layer with blueprint and generated scene files."
