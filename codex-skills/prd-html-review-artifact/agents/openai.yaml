@@ -1,0 +1,4 @@
+interface:
+  display_name: "PRD HTML Review Artifact"
+  short_description: "Create readable PRD HTML reviews"
+  default_prompt: "Create a standalone HTML review artifact from this PRD workspace while preserving Markdown as the source of truth."

@@ -4,15 +4,16 @@ Generated for distribution. Source paths are intentionally omitted; entries show
 
 ## Summary
 
-- `codex-skills`: 95 files, 47 Markdown
+- `codex-skills`: 107 files, 58 Markdown
 - `growth-agents`: 7 files, 7 Markdown
 - `harmonyvoice-project-skills`: 12 files, 6 Markdown
 - `image-split-agent`: 3 files, 3 Markdown
 - `openclaw-workspace-agents`: 8 files, 8 Markdown
 - `openclaw-workspace-skills`: 188 files, 53 Markdown
+- `prd-assistant-agent`: 1 files, 1 Markdown
 
-Total packaged files: 313 folder files plus 3 top-level files.
-Total Markdown files inside folders: 124.
+Total packaged files: 326 folder files plus 3 top-level files.
+Total Markdown files inside folders: 136.
 
 ## codex-skills
 
@@ -20,8 +21,8 @@ Total Markdown files inside folders: 124.
 - `ai-game-ui-image-brief\SKILL.md`
 - `caveman\SKILL.md`
 - `develop-web-game\agents\openai.yaml`
-- `develop-web-game\assets\game.png`
 - `develop-web-game\assets\game-small.svg`
+- `develop-web-game\assets\game.png`
 - `develop-web-game\LICENSE.txt`
 - `develop-web-game\references\action_payloads.json`
 - `develop-web-game\scripts\web_game_playwright_client.js`
@@ -51,8 +52,8 @@ Total Markdown files inside folders: 124.
 - `harmonyvoice-v1-implementation\agents\openai.yaml`
 - `harmonyvoice-v1-implementation\SKILL.md`
 - `imagegen\agents\openai.yaml`
-- `imagegen\assets\imagegen.png`
 - `imagegen\assets\imagegen-small.svg`
+- `imagegen\assets\imagegen.png`
 - `imagegen\LICENSE.txt`
 - `imagegen\references\cli.md`
 - `imagegen\references\codex-network.md`
@@ -72,11 +73,23 @@ Total Markdown files inside folders: 124.
 - `memory-manager\snapshot.sh`
 - `memory-manager\stats.sh`
 - `playwright-interactive\agents\openai.yaml`
-- `playwright-interactive\assets\playwright.png`
 - `playwright-interactive\assets\playwright-small.svg`
+- `playwright-interactive\assets\playwright.png`
 - `playwright-interactive\LICENSE.txt`
 - `playwright-interactive\NOTICE.txt`
 - `playwright-interactive\SKILL.md`
+- `prd-00-pipeline-orchestrator\SKILL.md`
+- `prd-01-idea-intake\SKILL.md`
+- `prd-02-business-boundary\SKILL.md`
+- `prd-03-rule-modeler\SKILL.md`
+- `prd-04-flow-modeler\SKILL.md`
+- `prd-05-page-interaction\SKILL.md`
+- `prd-06-admin-config\SKILL.md`
+- `prd-07-data-acceptance\SKILL.md`
+- `prd-08-risk-debt-review\SKILL.md`
+- `prd-09-prd-compressor\SKILL.md`
+- `prd-html-review-artifact\agents\openai.yaml`
+- `prd-html-review-artifact\SKILL.md`
 - `pua\SKILL.md`
 - `self-improving-agent\.learnings\ERRORS.md`
 - `self-improving-agent\.learnings\FEATURE_REQUESTS.md`
@@ -102,15 +115,15 @@ Total Markdown files inside folders: 124.
 - `weibo-fresh-posts\references\workflow.md`
 - `weibo-fresh-posts\scripts\install_cron.sh`
 - `weibo-fresh-posts\SKILL.md`
-- `xiaohongshu-mcp-skill\.clawhub\origin.json`
-- `xiaohongshu-mcp-skill\references\deploy.md`
-- `xiaohongshu-mcp-skill\references\usage.md`
-- `xiaohongshu-mcp-skill\SKILL.md`
 - `x-twitter-collector\.clawhub\origin.json`
 - `x-twitter-collector\config.json`
 - `x-twitter-collector\README.md`
 - `x-twitter-collector\SKILL.md`
 - `x-twitter-collector\template.md`
+- `xiaohongshu-mcp-skill\.clawhub\origin.json`
+- `xiaohongshu-mcp-skill\references\deploy.md`
+- `xiaohongshu-mcp-skill\references\usage.md`
+- `xiaohongshu-mcp-skill\SKILL.md`
 
 ## growth-agents
 
@@ -172,8 +185,8 @@ Total Markdown files inside folders: 124.
 - `capability-evolver\CONTRIBUTING.md`
 - `capability-evolver\index.js`
 - `capability-evolver\LICENSE`
-- `capability-evolver\package.json`
 - `capability-evolver\package-lock.json`
+- `capability-evolver\package.json`
 - `capability-evolver\README.md`
 - `capability-evolver\README.zh-CN.md`
 - `capability-evolver\scripts\a2a_export.js`
@@ -264,8 +277,8 @@ Total Markdown files inside folders: 124.
 - `memory-manager\SKILL.md`
 - `memory-manager\snapshot.sh`
 - `memory-manager\stats.sh`
-- `nano-banana-pro\.clawhub\origin.json`
 - `nano-banana-pro\_meta.json`
+- `nano-banana-pro\.clawhub\origin.json`
 - `nano-banana-pro\scripts\generate_image.py`
 - `nano-banana-pro\SKILL.md`
 - `pre-flight\SKILL.md`
@@ -283,10 +296,10 @@ Total Markdown files inside folders: 124.
 - `report-ppt-generator-pro\references\style-extraction.md`
 - `report-ppt-generator-pro\references\work-report-layouts.md`
 - `report-ppt-generator-pro\SKILL.md`
+- `self-improving-agent\_meta.json`
 - `self-improving-agent\.learnings\ERRORS.md`
 - `self-improving-agent\.learnings\FEATURE_REQUESTS.md`
 - `self-improving-agent\.learnings\LEARNINGS.md`
-- `self-improving-agent\_meta.json`
 - `self-improving-agent\assets\LEARNINGS.md`
 - `self-improving-agent\assets\SKILL-TEMPLATE.md`
 - `self-improving-agent\hooks\openclaw\handler.js`
@@ -332,16 +345,20 @@ Total Markdown files inside folders: 124.
 - `work-report-writer\scripts\report.sh`
 - `work-report-writer\SKILL.md`
 - `work-report-writer\tips.md`
-- `xiaohongshu-browser-collector\references\schema.md`
-- `xiaohongshu-browser-collector\references\workflow.md`
-- `xiaohongshu-browser-collector\SKILL.md`
 - `x-twitter-collector\.clawhub\origin.json`
 - `x-twitter-collector\config.json`
 - `x-twitter-collector\README.md`
 - `x-twitter-collector\SKILL.md`
 - `x-twitter-collector\template.md`
+- `xiaohongshu-browser-collector\references\schema.md`
+- `xiaohongshu-browser-collector\references\workflow.md`
+- `xiaohongshu-browser-collector\SKILL.md`
 - `yinan-price-monitor\_meta.json`
 - `yinan-price-monitor\products-example.csv`
 - `yinan-price-monitor\scripts\monitor_prices.py`
 - `yinan-price-monitor\SKILL.md`
+
+## prd-assistant-agent
+
+- `AGENTS.md`
 

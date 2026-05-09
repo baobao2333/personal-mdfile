@@ -4,15 +4,16 @@ This repository contains sanitized personal skill and agent instruction folders 
 
 ## Folders
 
-- `codex-skills` (95 files, 47 Markdown): personal Codex skill folders.
+- `codex-skills` (107 files, 58 Markdown): personal Codex skill folders.
 - `growth-agents` (7 files, 7 Markdown): file-based Growth app agent instructions.
 - `harmonyvoice-project-skills` (12 files, 6 Markdown): project-specific HarmonyVoice skill folders.
 - `image-split-agent` (3 files, 3 Markdown): image decomposition agent workspace instructions.
 - `openclaw-workspace-agents` (8 files, 8 Markdown): agent instruction files from the OpenClaw workspace.
 - `openclaw-workspace-skills` (188 files, 53 Markdown): skill folders from the OpenClaw workspace.
+- `prd-assistant-agent` (1 files, 1 Markdown): PRD generation agent instructions for the PRD assistant workspace.
 
-Total packaged files: 313 folder files plus 3 top-level files.
-Total Markdown files inside folders: 124.
+Total packaged files: 326 folder files plus 3 top-level files.
+Total Markdown files inside folders: 136.
 
 ## Packaging
 
