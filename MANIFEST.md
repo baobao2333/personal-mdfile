@@ -4,7 +4,7 @@ Generated for distribution. Source paths are intentionally omitted; entries show
 
 ## Summary
 
-- `codex-skills`: 107 files, 58 Markdown
+- `codex-skills`: 109 files, 59 Markdown
 - `growth-agents`: 7 files, 7 Markdown
 - `harmonyvoice-project-skills`: 12 files, 6 Markdown
 - `image-split-agent`: 3 files, 3 Markdown
@@ -12,8 +12,8 @@ Generated for distribution. Source paths are intentionally omitted; entries show
 - `openclaw-workspace-skills`: 188 files, 53 Markdown
 - `prd-assistant-agent`: 1 files, 1 Markdown
 
-Total packaged files: 326 folder files plus 3 top-level files.
-Total Markdown files inside folders: 136.
+Total packaged files: 328 folder files plus 3 top-level files.
+Total Markdown files inside folders: 137.
 
 ## codex-skills
 
@@ -62,6 +62,8 @@ Total Markdown files inside folders: 136.
 - `imagegen\references\sample-prompts.md`
 - `imagegen\scripts\image_gen.py`
 - `imagegen\SKILL.md`
+- `market-research-flow\agents\openai.yaml`
+- `market-research-flow\SKILL.md`
 - `memory-manager\categorize.sh`
 - `memory-manager\detect.sh`
 - `memory-manager\init.sh`
