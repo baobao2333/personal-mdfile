@@ -1,4 +1,4 @@
 interface:
   display_name: "Market Research Flow"
-  short_description: "Data-backed market and competitor research"
-  default_prompt: "Use $market-research-flow to research a market, product category, or competitor set with current data, historical context, source triangulation, and a clear recommendation."
+  short_description: "Decision-grade market research"
+  default_prompt: "Use $market-research-flow to research a market, product category, or competitor set and return one decision-grade recommendation backed by current data, history, and source triangulation."

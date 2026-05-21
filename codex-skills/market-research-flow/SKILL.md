@@ -1,6 +1,6 @@
 ---
 name: market-research-flow
-description: Use when researching a market, product category, competitor set, or growth opportunity that needs current data, source triangulation, historical context, and an explicit opportunity-versus-risk judgment. Especially useful for mobile games, app-store charts, ad-monetized products, overseas market entry, and questions like why a product is working now or whether a seeming white space is real.
+description: Use when researching a market, product category, competitor set, or growth opportunity that needs current data, source triangulation, historical context, and a decision-grade recommendation. Especially useful for mobile games, app-store charts, ad-monetized products, overseas market entry, and questions like what to build, what to avoid, why a product is working now, or whether a seeming white space is real.
 ---
 
 # Market Research Flow
@@ -8,6 +8,37 @@ description: Use when researching a market, product category, competitor set, or
 ## Overview
 
 Use this skill to turn a broad research question into a decision-ready market report. The workflow treats data as the spine, history as context, and absence of competitors as a hypothesis to challenge rather than an automatic opportunity.
+
+## Decision Contract
+
+The output must be a result, not a research guide. If the user asks what to do, choose a winner.
+
+Start every report with a `Decision` block:
+
+```text
+Decision: [one concrete choice]
+Confidence: [High / Medium / Low]
+Why this wins: [one sentence]
+What would change my mind: [one sentence]
+```
+
+Then provide:
+
+- `Ranked options`: exactly one primary recommendation, one backup, and one reject list unless the user asks for more.
+- `Evidence table`: concrete products, markets, dates, ranks, downloads, revenue, ratings, or other hard signals.
+- `Why not the alternatives`: explain why the runner-up and rejected paths lose.
+- `Execution implication`: what the user should build, test, monitor, or avoid next.
+
+Do not let the report end as a checklist. If a test plan is useful, put it after the decision and make it serve the chosen recommendation.
+
+## Anti-Patterns
+
+- Do not answer with broad categories such as "Puzzle / Sort / Arcade" without picking the specific category or product pattern that wins.
+- Do not list benchmarks without saying which one should be copied, avoided, or only monitored.
+- Do not replace the conclusion with a generic validation framework.
+- Do not say "feasible" without naming the exact thing most worth doing.
+- Do not call a market gap an opportunity before checking failed or small variants.
+- Do not hide behind uncertainty. If evidence is incomplete, give a provisional decision and state what data would overturn it.
 
 ## Core Workflow
 
@@ -73,16 +104,26 @@ Use this skill to turn a broad research question into a decision-ready market re
 Use this structure unless the user asks for another format:
 
 ```text
-Conclusion
+Decision
+Ranked Options
 Data Spine
 History
 Competitor Map
 Why It Works Now
 Why Others Did Not Do It
-Recommendation
+Why The Winner Wins
+Why Alternatives Lose
 Risks And Next Tests
 Sources
 ```
+
+For market-entry or build/avoid questions, include a compact scoring table:
+
+```text
+Option | Data strength | Market fit | Monetization fit | Differentiation | Execution risk | Score | Verdict
+```
+
+The highest score is not automatically the recommendation. Explain any override.
 
 ## Evidence Rules
 
@@ -99,4 +140,5 @@ Sources
 - Keep tables compact and tied to the decision.
 - Use short product-language bullets for reasoning.
 - Preserve uncertainty where evidence is thin.
+- Prefer "I would build X, not Y" over "there are several promising directions".
 - For Chinese users, write the report in Chinese while keeping product names, file names, and technical terms exact.
