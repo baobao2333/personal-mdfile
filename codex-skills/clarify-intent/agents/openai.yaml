@@ -1,7 +1,7 @@
 interface:
   display_name: 需求翻译官
-  short_description: 把口语编程需求译成准确概念，用行为对照减少误解、追问与返工
-  default_prompt: 使用 $clarify-intent 帮我把下面的编程需求说清楚：识别概念、用实际行为校准理解，只问影响结果的关键问题，并按我的请求继续推进。
+  short_description: 把编程与创作意图译成准确表达，用参考和实际结果校准理解、减少返工
+  default_prompt: 使用 $clarify-intent 帮我说清下面的编程或创作需求：识别概念，用行为示例或参考小样校准，明确改什么与保留什么，并按我的请求继续推进和检查结果。
   icon_small: assets/icon.svg
   icon_large: assets/icon.svg
 policy:
