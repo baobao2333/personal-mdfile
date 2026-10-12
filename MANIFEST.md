@@ -4,82 +4,101 @@ Generated for distribution. Source paths are intentionally omitted; entries show
 
 ## Summary
 
-- `codex-skills`: 109 files, 59 Markdown
+- `codex-config`: 6 files, 3 Markdown
+- `codex-skills`: 118 files, 64 Markdown
 - `growth-agents`: 7 files, 7 Markdown
 - `harmonyvoice-project-skills`: 12 files, 6 Markdown
 - `image-split-agent`: 3 files, 3 Markdown
 - `openclaw-workspace-agents`: 8 files, 8 Markdown
-- `openclaw-workspace-skills`: 188 files, 53 Markdown
+- `openclaw-workspace-skills`: 187 files, 53 Markdown
 - `prd-assistant-agent`: 1 files, 1 Markdown
 
-Total packaged files: 328 folder files plus 3 top-level files.
-Total Markdown files inside folders: 137.
+Total packaged files: 342 folder files plus 3 top-level files.
+Total Markdown files inside folders: 145.
+
+## codex-config
+
+- `AGENTS.md`
+- `gpt-base-instructions.md`
+- `sol-worker.config.toml`
+- `luna-worker.config.toml`
+- `config.example.toml`
+- `README.md`
 
 ## codex-skills
 
-- `ai-game-ui-image-brief\agents\openai.yaml`
 - `ai-game-ui-image-brief\SKILL.md`
+- `ai-game-ui-image-brief\agents\openai.yaml`
 - `caveman\SKILL.md`
+- `clarify-intent\CHANGELOG.md`
+- `clarify-intent\LICENSE`
+- `clarify-intent\README.md`
+- `clarify-intent\SKILL.md`
+- `clarify-intent\VERSION`
+- `clarify-intent\agents\openai.yaml`
+- `clarify-intent\assets\icon.svg`
+- `clarify-intent\releases\clarify-intent-v1.0.0.md`
+- `clarify-intent\releases\clarify-intent-v1.1.0.md`
+- `develop-web-game\LICENSE.txt`
+- `develop-web-game\SKILL.md`
 - `develop-web-game\agents\openai.yaml`
 - `develop-web-game\assets\game-small.svg`
 - `develop-web-game\assets\game.png`
-- `develop-web-game\LICENSE.txt`
 - `develop-web-game\references\action_payloads.json`
 - `develop-web-game\scripts\web_game_playwright_client.js`
-- `develop-web-game\SKILL.md`
-- `extract-ui-spec-from-html\agents\openai.yaml`
 - `extract-ui-spec-from-html\SKILL.md`
-- `frontend-skill\agents\openai.yaml`
+- `extract-ui-spec-from-html\agents\openai.yaml`
 - `frontend-skill\LICENSE.txt`
 - `frontend-skill\SKILL.md`
+- `frontend-skill\agents\openai.yaml`
+- `generate-visual\SKILL.md`
 - `generate-visual\agents\openai.yaml`
 - `generate-visual\scripts\generate_visual.py`
-- `generate-visual\SKILL.md`
-- `godot-ui-acceptance-pass\agents\openai.yaml`
 - `godot-ui-acceptance-pass\SKILL.md`
-- `godot-ui-rebuild-from-spec\agents\openai.yaml`
+- `godot-ui-acceptance-pass\agents\openai.yaml`
 - `godot-ui-rebuild-from-spec\SKILL.md`
-- `harmonyvoice-acceptance-pass\agents\openai.yaml`
+- `godot-ui-rebuild-from-spec\agents\openai.yaml`
 - `harmonyvoice-acceptance-pass\SKILL.md`
-- `harmonyvoice-code-to-figma\agents\openai.yaml`
+- `harmonyvoice-acceptance-pass\agents\openai.yaml`
 - `harmonyvoice-code-to-figma\SKILL.md`
-- `harmonyvoice-figma-to-code\agents\openai.yaml`
+- `harmonyvoice-code-to-figma\agents\openai.yaml`
 - `harmonyvoice-figma-to-code\SKILL.md`
-- `harmonyvoice-prd-breakdown\agents\openai.yaml`
+- `harmonyvoice-figma-to-code\agents\openai.yaml`
 - `harmonyvoice-prd-breakdown\SKILL.md`
-- `harmonyvoice-small-iteration\agents\openai.yaml`
+- `harmonyvoice-prd-breakdown\agents\openai.yaml`
 - `harmonyvoice-small-iteration\SKILL.md`
-- `harmonyvoice-v1-implementation\agents\openai.yaml`
+- `harmonyvoice-small-iteration\agents\openai.yaml`
 - `harmonyvoice-v1-implementation\SKILL.md`
+- `harmonyvoice-v1-implementation\agents\openai.yaml`
+- `imagegen\LICENSE.txt`
+- `imagegen\SKILL.md`
 - `imagegen\agents\openai.yaml`
 - `imagegen\assets\imagegen-small.svg`
 - `imagegen\assets\imagegen.png`
-- `imagegen\LICENSE.txt`
 - `imagegen\references\cli.md`
 - `imagegen\references\codex-network.md`
 - `imagegen\references\image-api.md`
 - `imagegen\references\prompting.md`
 - `imagegen\references\sample-prompts.md`
 - `imagegen\scripts\image_gen.py`
-- `imagegen\SKILL.md`
-- `market-research-flow\agents\openai.yaml`
 - `market-research-flow\SKILL.md`
+- `market-research-flow\agents\openai.yaml`
+- `memory-manager\README.md`
+- `memory-manager\SKILL.md`
 - `memory-manager\categorize.sh`
 - `memory-manager\detect.sh`
 - `memory-manager\init.sh`
 - `memory-manager\organize.sh`
 - `memory-manager\package.json`
-- `memory-manager\README.md`
 - `memory-manager\search.sh`
-- `memory-manager\SKILL.md`
 - `memory-manager\snapshot.sh`
 - `memory-manager\stats.sh`
-- `playwright-interactive\agents\openai.yaml`
-- `playwright-interactive\assets\playwright-small.svg`
-- `playwright-interactive\assets\playwright.png`
 - `playwright-interactive\LICENSE.txt`
 - `playwright-interactive\NOTICE.txt`
 - `playwright-interactive\SKILL.md`
+- `playwright-interactive\agents\openai.yaml`
+- `playwright-interactive\assets\playwright-small.svg`
+- `playwright-interactive\assets\playwright.png`
 - `prd-00-pipeline-orchestrator\SKILL.md`
 - `prd-01-idea-intake\SKILL.md`
 - `prd-02-business-boundary\SKILL.md`
@@ -90,73 +109,73 @@ Total Markdown files inside folders: 137.
 - `prd-07-data-acceptance\SKILL.md`
 - `prd-08-risk-debt-review\SKILL.md`
 - `prd-09-prd-compressor\SKILL.md`
-- `prd-html-review-artifact\agents\openai.yaml`
 - `prd-html-review-artifact\SKILL.md`
+- `prd-html-review-artifact\agents\openai.yaml`
 - `pua\SKILL.md`
 - `self-improving-agent\.learnings\ERRORS.md`
 - `self-improving-agent\.learnings\FEATURE_REQUESTS.md`
 - `self-improving-agent\.learnings\LEARNINGS.md`
+- `self-improving-agent\SKILL.md`
 - `self-improving-agent\assets\LEARNINGS.md`
 - `self-improving-agent\assets\SKILL-TEMPLATE.md`
-- `self-improving-agent\hooks\openclaw\handler.ts`
 - `self-improving-agent\hooks\openclaw\HOOK.md`
+- `self-improving-agent\hooks\openclaw\handler.ts`
 - `self-improving-agent\references\examples.md`
 - `self-improving-agent\references\hooks-setup.md`
 - `self-improving-agent\references\openclaw-integration.md`
 - `self-improving-agent\scripts\activator.sh`
 - `self-improving-agent\scripts\error-detector.sh`
 - `self-improving-agent\scripts\extract-skill.sh`
-- `self-improving-agent\SKILL.md`
+- `standardize-online-service-ops\SKILL.md`
 - `standardize-online-service-ops\agents\openai.yaml`
 - `standardize-online-service-ops\references\ops-contract.md`
-- `standardize-online-service-ops\SKILL.md`
 - `weibo-fresh-posts\.clawhub\origin.json`
 - `weibo-fresh-posts\README.md`
+- `weibo-fresh-posts\SKILL.md`
 - `weibo-fresh-posts\references\cron-setup.md`
 - `weibo-fresh-posts\references\markdown-schema.md`
 - `weibo-fresh-posts\references\workflow.md`
 - `weibo-fresh-posts\scripts\install_cron.sh`
-- `weibo-fresh-posts\SKILL.md`
 - `x-twitter-collector\.clawhub\origin.json`
-- `x-twitter-collector\config.json`
 - `x-twitter-collector\README.md`
 - `x-twitter-collector\SKILL.md`
+- `x-twitter-collector\config.json`
 - `x-twitter-collector\template.md`
 - `xiaohongshu-mcp-skill\.clawhub\origin.json`
+- `xiaohongshu-mcp-skill\SKILL.md`
 - `xiaohongshu-mcp-skill\references\deploy.md`
 - `xiaohongshu-mcp-skill\references\usage.md`
-- `xiaohongshu-mcp-skill\SKILL.md`
 
 ## growth-agents
 
+- `README.md`
 - `coach-agent.md`
 - `grader-agent.md`
 - `memory-agent.md`
 - `planner-agent.md`
-- `README.md`
 - `report-agent.md`
 - `review-agent.md`
 
 ## harmonyvoice-project-skills
 
-- `harmonyvoice-acceptance-pass\agents\openai.yaml`
 - `harmonyvoice-acceptance-pass\SKILL.md`
-- `harmonyvoice-code-to-figma\agents\openai.yaml`
+- `harmonyvoice-acceptance-pass\agents\openai.yaml`
 - `harmonyvoice-code-to-figma\SKILL.md`
-- `harmonyvoice-figma-to-code\agents\openai.yaml`
+- `harmonyvoice-code-to-figma\agents\openai.yaml`
 - `harmonyvoice-figma-to-code\SKILL.md`
-- `harmonyvoice-prd-breakdown\agents\openai.yaml`
+- `harmonyvoice-figma-to-code\agents\openai.yaml`
 - `harmonyvoice-prd-breakdown\SKILL.md`
-- `harmonyvoice-small-iteration\agents\openai.yaml`
+- `harmonyvoice-prd-breakdown\agents\openai.yaml`
 - `harmonyvoice-small-iteration\SKILL.md`
-- `harmonyvoice-v1-implementation\agents\openai.yaml`
+- `harmonyvoice-small-iteration\agents\openai.yaml`
 - `harmonyvoice-v1-implementation\SKILL.md`
+- `harmonyvoice-v1-implementation\agents\openai.yaml`
 
 ## image-split-agent
 
+- `README.md`
 - `agent\instructions\image-asset-agent.md`
 - `editor\apps\zip-layer-editor\README.md`
-- `README.md`
 
 ## openclaw-workspace-agents
 
@@ -173,24 +192,24 @@ Total Markdown files inside folders: 137.
 
 - `bilibili-hot\SKILL.md`
 - `bilibili-smart-summarizer\SKILL.md`
+- `calendar-manager\SKILL.md`
 - `calendar-manager\_meta.json`
 - `calendar-manager\references\resources.md`
-- `calendar-manager\SKILL.md`
 - `capability-evolver\.gitignore`
+- `capability-evolver\CONTRIBUTING.md`
+- `capability-evolver\LICENSE`
+- `capability-evolver\README.md`
+- `capability-evolver\README.zh-CN.md`
+- `capability-evolver\SKILL.md`
 - `capability-evolver\assets\cover.png`
-- `capability-evolver\assets\gep\candidates.jsonl`
 - `capability-evolver\assets\gep\capsules.json`
 - `capability-evolver\assets\gep\events.jsonl`
 - `capability-evolver\assets\gep\failed_capsules.json`
 - `capability-evolver\assets\gep\genes.json`
 - `capability-evolver\assets\gep\genes.jsonl`
-- `capability-evolver\CONTRIBUTING.md`
 - `capability-evolver\index.js`
-- `capability-evolver\LICENSE`
 - `capability-evolver\package-lock.json`
 - `capability-evolver\package.json`
-- `capability-evolver\README.md`
-- `capability-evolver\README.zh-CN.md`
 - `capability-evolver\scripts\a2a_export.js`
 - `capability-evolver\scripts\a2a_ingest.js`
 - `capability-evolver\scripts\a2a_promote.js`
@@ -205,15 +224,14 @@ Total Markdown files inside folders: 137.
 - `capability-evolver\scripts\recover_loop.js`
 - `capability-evolver\scripts\suggest_version.js`
 - `capability-evolver\scripts\validate-modules.js`
-- `capability-evolver\SKILL.md`
 - `capability-evolver\src\canary.js`
 - `capability-evolver\src\evolve.js`
 - `capability-evolver\src\gep\a2a.js`
 - `capability-evolver\src\gep\a2aProtocol.js`
 - `capability-evolver\src\gep\analyzer.js`
 - `capability-evolver\src\gep\assetCallLog.js`
-- `capability-evolver\src\gep\assets.js`
 - `capability-evolver\src\gep\assetStore.js`
+- `capability-evolver\src\gep\assets.js`
 - `capability-evolver\src\gep\bridge.js`
 - `capability-evolver\src\gep\candidates.js`
 - `capability-evolver\src\gep\contentHash.js`
@@ -259,35 +277,36 @@ Total Markdown files inside folders: 137.
 - `capability-evolver\test\skillDistiller.test.js`
 - `capability-evolver\test\strategy.test.js`
 - `capability-evolver\test\validationReport.test.js`
-- `chinese-daily-report-generator\_meta.json`
 - `chinese-daily-report-generator\SKILL.md`
-- `frontend-design\_meta.json`
+- `chinese-daily-report-generator\_meta.json`
 - `frontend-design\LICENSE.txt`
 - `frontend-design\SKILL.md`
+- `frontend-design\_meta.json`
+- `meeting-minutes-task-extractor\SKILL.md`
 - `meeting-minutes-task-extractor\_meta.json`
 - `meeting-minutes-task-extractor\references\skillpay-api-contract.md`
 - `meeting-minutes-task-extractor\scripts\meeting_minutes_task_extractor.py`
 - `meeting-minutes-task-extractor\scripts\test_meeting_minutes_task_extractor.py`
-- `meeting-minutes-task-extractor\SKILL.md`
+- `memory-manager\README.md`
+- `memory-manager\SKILL.md`
 - `memory-manager\categorize.sh`
 - `memory-manager\detect.sh`
 - `memory-manager\init.sh`
 - `memory-manager\organize.sh`
 - `memory-manager\package.json`
-- `memory-manager\README.md`
 - `memory-manager\search.sh`
-- `memory-manager\SKILL.md`
 - `memory-manager\snapshot.sh`
 - `memory-manager\stats.sh`
-- `nano-banana-pro\_meta.json`
 - `nano-banana-pro\.clawhub\origin.json`
-- `nano-banana-pro\scripts\generate_image.py`
 - `nano-banana-pro\SKILL.md`
+- `nano-banana-pro\_meta.json`
+- `nano-banana-pro\scripts\generate_image.py`
 - `pre-flight\SKILL.md`
 - `pua-drive\SKILL.md`
+- `purple-cow-content\SKILL.md`
 - `purple-cow-content\_meta.json`
 - `purple-cow-content\metadata.json`
-- `purple-cow-content\SKILL.md`
+- `report-ppt-generator-pro\SKILL.md`
 - `report-ppt-generator-pro\_meta.json`
 - `report-ppt-generator-pro\assets\html-template\base.css`
 - `report-ppt-generator-pro\assets\html-template\slide.html`
@@ -297,70 +316,68 @@ Total Markdown files inside folders: 137.
 - `report-ppt-generator-pro\references\image-handling.md`
 - `report-ppt-generator-pro\references\style-extraction.md`
 - `report-ppt-generator-pro\references\work-report-layouts.md`
-- `report-ppt-generator-pro\SKILL.md`
-- `self-improving-agent\_meta.json`
 - `self-improving-agent\.learnings\ERRORS.md`
 - `self-improving-agent\.learnings\FEATURE_REQUESTS.md`
 - `self-improving-agent\.learnings\LEARNINGS.md`
+- `self-improving-agent\SKILL.md`
+- `self-improving-agent\_meta.json`
 - `self-improving-agent\assets\LEARNINGS.md`
 - `self-improving-agent\assets\SKILL-TEMPLATE.md`
+- `self-improving-agent\hooks\openclaw\HOOK.md`
 - `self-improving-agent\hooks\openclaw\handler.js`
 - `self-improving-agent\hooks\openclaw\handler.ts`
-- `self-improving-agent\hooks\openclaw\HOOK.md`
 - `self-improving-agent\references\examples.md`
 - `self-improving-agent\references\hooks-setup.md`
 - `self-improving-agent\references\openclaw-integration.md`
 - `self-improving-agent\scripts\activator.sh`
 - `self-improving-agent\scripts\error-detector.sh`
 - `self-improving-agent\scripts\extract-skill.sh`
-- `self-improving-agent\SKILL.md`
+- `skill-creator\SKILL.md`
 - `skill-creator\license.txt`
 - `skill-creator\scripts\init_skill.py`
 - `skill-creator\scripts\package_skill.py`
 - `skill-creator\scripts\quick_validate.py`
 - `skill-creator\scripts\test_package_skill.py`
 - `skill-creator\scripts\test_quick_validate.py`
-- `skill-creator\SKILL.md`
-- `speech-notes\_meta.json`
 - `speech-notes\SKILL.md`
+- `speech-notes\_meta.json`
+- `task-dispatcher\SKILL.md`
 - `task-dispatcher\_meta.json`
+- `task-dispatcher\references\SUPPLEMENTARY_DESIGN.md`
 - `task-dispatcher\references\config\agents.yaml`
 - `task-dispatcher\references\config\budget.yaml`
 - `task-dispatcher\references\config\cleanup.yaml`
 - `task-dispatcher\references\config\pipelines.yaml`
 - `task-dispatcher\references\config\review.yaml`
-- `task-dispatcher\references\SUPPLEMENTARY_DESIGN.md`
-- `task-dispatcher\SKILL.md`
-- `task-reminder\_meta.json`
 - `task-reminder\SKILL.md`
+- `task-reminder\_meta.json`
+- `tencent-ui-pro\SKILL.md`
 - `tencent-ui-pro\index.js`
 - `tencent-ui-pro\openclaw.skill.json`
-- `tencent-ui-pro\SKILL.md`
 - `weibo-fresh-posts\.clawhub\origin.json`
 - `weibo-fresh-posts\README.md`
+- `weibo-fresh-posts\SKILL.md`
 - `weibo-fresh-posts\references\cron-setup.md`
 - `weibo-fresh-posts\references\markdown-schema.md`
 - `weibo-fresh-posts\references\workflow.md`
 - `weibo-fresh-posts\scripts\install_cron.sh`
-- `weibo-fresh-posts\SKILL.md`
+- `work-report-writer\SKILL.md`
 - `work-report-writer\_meta.json`
 - `work-report-writer\scripts\report.sh`
-- `work-report-writer\SKILL.md`
 - `work-report-writer\tips.md`
 - `x-twitter-collector\.clawhub\origin.json`
-- `x-twitter-collector\config.json`
 - `x-twitter-collector\README.md`
 - `x-twitter-collector\SKILL.md`
+- `x-twitter-collector\config.json`
 - `x-twitter-collector\template.md`
+- `xiaohongshu-browser-collector\SKILL.md`
 - `xiaohongshu-browser-collector\references\schema.md`
 - `xiaohongshu-browser-collector\references\workflow.md`
-- `xiaohongshu-browser-collector\SKILL.md`
+- `yinan-price-monitor\SKILL.md`
 - `yinan-price-monitor\_meta.json`
 - `yinan-price-monitor\products-example.csv`
 - `yinan-price-monitor\scripts\monitor_prices.py`
-- `yinan-price-monitor\SKILL.md`
 
 ## prd-assistant-agent
 
 - `AGENTS.md`
-
