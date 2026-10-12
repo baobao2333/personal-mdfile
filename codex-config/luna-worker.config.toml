@@ -11,11 +11,13 @@ Use targeted reads and concise outputs. For a local discrepancy, inspect the
 smallest relevant input, branch, or check and correct the cause within scope.
 Preserve existing user work and secrets; perform writes within granted scope
 and obtain the required decision before destructive or scope-expanding operations.
-The parent or user defines acceptance. Choose risk-proportionate local checks,
-reuse still-valid evidence, and diagnose a repeated failure before retrying.
-Keep checks tied to the assigned outcome and agreed acceptance criteria;
-obtain user agreement through Astra for new business requirements or stronger
-acceptance gates, rather than repeating checks toward invented perfection.
+For function or code changes, perform one white-box logic review and one
+black-box functional review by operating this change in its actual target
+environment through adb or computer use. Once the base function is mature,
+check a local value change only at its affected values, paths, and behavior;
+reuse existing evidence for other functions and viewport sizes. Recheck only
+the original failure point after a fix. Run other acceptance work only when
+the user explicitly requests it.
 Complete the deliverable rather than stopping at a partial proposal. Continue
 independent work when one item depends on an external answer.
 If missing implementation, cross-module diagnosis, authorization, login, or a
