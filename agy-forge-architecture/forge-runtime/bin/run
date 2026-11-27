@@ -63,11 +63,14 @@ if [ ! -d "$wt" ]; then
   start=main; [ -f "$task/base_ref" ] && start="$(head -1 "$task/base_ref")"
   git -C "$REPO" worktree add -q -b "task/$id" "$wt" "$start" || exit 1
   git -C "$REPO" rev-parse "$start" > "$state/base" || exit 1
-  criteria_sha > "$state/criteria.sha" || exit 1
 fi
+link_repo_env "$wt"
+# Snapshot criteria at the start of every bin/run invocation so orchestrator fixes to
+# spec.md/check.sh/scope across re-runs are accepted while mid-run executor edits are caught.
+criteria_sha > "$state/criteria.sha" || exit 1
 base="$(cat "$state/base")" || exit 1
 rm -f "$task/status.json" "$task/report.md" \
-  "$state"/round-*.txt "$state"/exec-*.sched.json "$state"/review-*.json "$state"/arbiter-*.json \
+  "$state"/round-*.txt "$state"/exec-*.jsonl "$state"/exec-*.sched.json "$state"/review-*.json "$state"/arbiter-*.json \
   "$state"/arbiter-*.raw.json "$state"/arbiter-*.err "$state/audit.json" "$state/summary.txt" || exit 1
 
 scope_note=""

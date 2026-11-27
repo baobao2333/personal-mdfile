@@ -85,12 +85,17 @@ if [ "$fail" = 0 ] || [ "$st" != blocked ]; then
   co="$state/checkout"
   git -C "$REPO" worktree remove --force "$co" 2>/dev/null || true
   git -C "$REPO" worktree add -q --detach "$co" "$head_sha" || { bad "cannot check out $head_sha"; exit 1; }
+  link_repo_env "$co"
 
   ran_any=0
   run_check() {
     local label="$1" script="$2" outfile="$3"
     ran_any=1
-    ( unset FORGE_GATE_HEAD; cd "$co" && perl -e 'alarm shift; exec @ARGV' "${CHECK_TIMEOUT:-600}" bash "$script" ) > "$outfile" 2>&1
+    (
+      unset FORGE_GATE_HEAD
+      [ -d "$REPO/.venv/bin" ] && export PATH="$REPO/.venv/bin:$PATH"
+      cd "$co" && perl -e 'alarm shift; exec @ARGV' "${CHECK_TIMEOUT:-600}" bash "$script"
+    ) > "$outfile" 2>&1
     local rc=$?
     if [ "$rc" = 0 ]; then
       ok "$label passed"

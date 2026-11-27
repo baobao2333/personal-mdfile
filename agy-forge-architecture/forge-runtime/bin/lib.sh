@@ -113,3 +113,16 @@ REPO="$FORGE"
 if [ -f "$task/repo" ]; then
   REPO="$(head -1 "$task/repo")"
 fi
+
+# link_repo_env <checkout_dir>: symlink gitignored local dev toolchains (.venv, node_modules, etc.)
+# from $REPO so natural commands (.venv/bin/python, node tools/...) work without check.sh boilerplate.
+link_repo_env() {
+  local dst="$1" rel
+  [ -d "$dst" ] && [ -d "$REPO" ] || return 0
+  for rel in .venv venv node_modules tools/node_modules local.properties; do
+    if [ -e "$REPO/$rel" ] && [ ! -e "$dst/$rel" ] && git -C "$REPO" check-ignore -q "$rel" 2>/dev/null; then
+      mkdir -p "$(dirname "$dst/$rel")"
+      ln -s "$REPO/$rel" "$dst/$rel" 2>/dev/null || true
+    fi
+  done
+}

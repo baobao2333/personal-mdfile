@@ -610,4 +610,17 @@ absent "$root/logs/sigtask/run.lock"
 FORGE_SCHED_DIR="$sched_dir" SOL_MAX_PROCS=1 "$root/bin/sched" status --json > "$sandbox/sched-killed.json"
 json '.occupied_exec_slots == 0' "$sandbox/sched-killed.json"
 
+# Gitignored .venv in REPO is auto-linked into worktree/gate, and orchestrator check.sh edits across re-runs refresh criteria.sha.
+printf '.venv\n' > "$root/.gitignore"
+git -C "$root" add .gitignore && git -C "$root" commit -qm "ignore venv"
+mkdir -p "$root/.venv/bin"
+printf '#!/bin/sh\nexit 0\n' > "$root/.venv/bin/python"
+chmod +x "$root/.venv/bin/python"
+make_task venv-rerun pass
+printf '# PUBLIC_CHECK\n.venv/bin/python && ! grep -q gate_failure result.txt\n' > "$root/tasks/venv-rerun/check.sh"
+run_expect 0 venv-rerun
+printf '# PUBLIC_CHECK_UPDATED\n.venv/bin/python && test -f result.txt\n' > "$root/tasks/venv-rerun/check.sh"
+run_expect 0 venv-rerun
+contains 'ok   criteria unchanged' "$root/logs/venv-rerun/round-1.txt"
+
 echo 'arbiter pipeline: all 9 offline scenarios passed'

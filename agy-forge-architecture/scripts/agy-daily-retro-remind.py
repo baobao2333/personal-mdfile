@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -24,7 +25,7 @@ def _notify(title: str, subtitle: str, message: str, sound: str = "Glass") -> No
     subprocess.run(["/usr/bin/osascript", "-e", script], capture_output=True, check=False)
 
 
-def _count_sessions_today(today_local: datetime.date) -> int:
+def _count_sessions_today(today_utc_prefix: str, today_local: datetime.date) -> int:
     seen: set[str] = set()
     start_utc = (
         datetime.datetime.combine(today_local, datetime.time.min)
@@ -74,8 +75,9 @@ def _forge_stats_today(today_str: str) -> tuple[int, float, int, list[str]]:
         end_ts = max(f.stat().st_mtime for f in files)
         if datetime.datetime.fromtimestamp(end_ts).strftime("%Y-%m-%d") != today_str:
             continue
-        start_ts = min(getattr(f.stat(), "st_birthtime", f.stat().st_mtime) for f in files)
-        dur = max(0.0, (end_ts - start_ts) / 60.0)
+        run_files = [f for f in files if f.name != "base" and not f.name.startswith(".")] or files
+        start_ts = min(f.stat().st_mtime for f in run_files)
+        dur = max(0.1, (end_ts - start_ts) / 60.0)
         count += 1
         total_min += dur
         if (entry / "round-2.txt").exists():
@@ -87,10 +89,11 @@ def _forge_stats_today(today_str: str) -> tuple[int, float, int, list[str]]:
 def main() -> int:
     now = datetime.datetime.now().astimezone()
     today_str = now.strftime("%Y-%m-%d")
-    sessions_cnt = _count_sessions_today(now.date())
+    sessions_cnt = _count_sessions_today(now.astimezone(datetime.timezone.utc).strftime("%Y-%m-%d"), now.date())
     forge_cnt, forge_min, multi_cnt, highlights = _forge_stats_today(today_str)
 
     if sessions_cnt == 0 and forge_cnt == 0:
+        # Quiet day with zero activity: skip noisy notification.
         return 0
 
     avg_min = (forge_min / forge_cnt) if forge_cnt else 0.0
