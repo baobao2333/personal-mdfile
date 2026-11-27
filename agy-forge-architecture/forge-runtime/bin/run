@@ -1,0 +1,425 @@
+#!/bin/bash
+# Full task loop: execute -> L0 gate -> L1 review -> retry (max 3 rounds).
+# Usage: bin/run <id>    Prints only logs/<id>/summary.txt at the end.
+# Exit 0 = ready to merge (check AUDIT line), 1 = escalate to AGY, 2 = valid blocked.
+set -uo pipefail
+id="${1:?usage: run <id>}"
+source "$(dirname "$0")/lib.sh"
+max_rounds="${MAX_ROUNDS:-3}"
+exec_timeout="${EXEC_TIMEOUT:-1800}"
+fresh_rounds="${FRESH_ROUNDS:-1}"
+
+[ -f "$task/spec.md" ] && { [ -f "$task/check.sh" ] || [ -f "$accept_dir/check.sh" ]; } \
+  || { echo "need spec.md and (check.sh or accept/$id/check.sh)" >&2; exit 1; }
+
+# Serialize the short mkdir/PID publication and stale-lock reclaim on the state directory.
+lock="$state/run.lock"
+python3 - "$lock" "$$" <<'PY' || exit 1
+import fcntl, os, sys
+from pathlib import Path
+
+lock, pid = Path(sys.argv[1]), sys.argv[2]
+fd = os.open(lock.parent, os.O_RDONLY)
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    sys.exit(f"run lock busy: {lock}")
+
+owner = lock / "pid"
+try:
+    other_pid = int(owner.read_text())
+except (FileNotFoundError, ValueError):
+    other_pid = 0  # Publisher died before writing a complete PID.
+if other_pid > 0:
+    try:
+        os.kill(other_pid, 0)
+    except ProcessLookupError:
+        other_pid = 0
+    except PermissionError:
+        sys.exit(f"run already active (PID {other_pid}): {lock}")
+    if other_pid:
+        sys.exit(f"run already active (PID {other_pid}): {lock}")
+lock.mkdir(exist_ok=True)
+owner.write_text(pid + "\n")
+os.close(fd)
+PY
+
+active_sched_pid=""
+cleanup_run() {
+  if [ -n "${active_sched_pid:-}" ]; then
+    kill -TERM "$active_sched_pid" 2>/dev/null || true
+    wait "$active_sched_pid" 2>/dev/null || true
+    active_sched_pid=""
+  fi
+  if [ -d "$lock" ]; then
+    mv "$lock" "$lock.retired.$$" 2>/dev/null && rm -rf "$lock.retired.$$"
+  fi
+}
+# Unpublish atomically after reaping any active scheduler child.
+trap cleanup_run EXIT
+trap 'exit 1' HUP INT TERM
+
+if [ ! -d "$wt" ]; then
+  start=main; [ -f "$task/base_ref" ] && start="$(head -1 "$task/base_ref")"
+  git -C "$REPO" worktree add -q -b "task/$id" "$wt" "$start" || exit 1
+  git -C "$REPO" rev-parse "$start" > "$state/base" || exit 1
+  criteria_sha > "$state/criteria.sha" || exit 1
+fi
+base="$(cat "$state/base")" || exit 1
+rm -f "$task/status.json" "$task/report.md" \
+  "$state"/round-*.txt "$state"/exec-*.sched.json "$state"/review-*.json "$state"/arbiter-*.json \
+  "$state"/arbiter-*.raw.json "$state"/arbiter-*.err "$state/audit.json" "$state/summary.txt" || exit 1
+
+scope_note=""
+[ -f "$task/scope" ] && scope_note="只允许修改匹配这些模式的文件: $(tr '\n' ' ' < "$task/scope")"
+
+public_checks=""
+[ -f "$task/smoke.sh" ] && public_checks="${public_checks} $task/smoke.sh"
+[ -f "$task/check.sh" ] && public_checks="${public_checks} $task/check.sh"
+if [ -n "$public_checks" ]; then
+  check_note="公开自检脚本:$public_checks (在干净 checkout 的仓库根目录用 bash 运行；你可以运行它们，但禁止修改 $task/ 下任何规范/脚本/夹具)。"
+else
+  check_note="本任务使用门禁隐藏验收，禁止修改 $task/ 下任何规范/脚本/夹具。"
+fi
+
+base_prompt="你是 forge 框架里的核心研发执行专家，非常信任并感谢你干净、扎实、高质量的工程实现！工作目录: $wt (git 分支 task/$id)。
+只在该目录内修改文件，不要动系统配置、不要安装全局依赖。$scope_note
+$check_note
+
+工程硬约束:
+- 严禁吞异常（宽泛 try/except/catch）、严禁对内部不变量做冗余兜底或添加未要求的 fallback 分支。
+- 严禁修改或削弱既有测试/fixture 来换取检查通过。
+- 内部实现细节（变量/辅助函数命名、内部拆分、未指明的保守默认值）一律按仓库既有惯例自行决策，禁止为此提问或阻塞。
+
+完成后:
+1. 在 $wt 里 git commit 全部改动 (工作区必须干净)
+2. 写 $task/status.json: {\"state\":\"done\",\"note\":\"50字内改动结果\"} (无需写 report.md)
+
+阻塞契约 (仅限以下两类情况可写 blocked):
+- 「前提:」代码事实与 spec 的背景/前提矛盾（必须附 文件:行号 证据和替代建议）
+- 「环境:」或「权限:」缺少外部密钥、真实设备或必须的外部服务
+其余理由的 blocked 会被门禁直接打回。
+
+任务说明:
+$(cat "$task/spec.md")"
+
+prompt="$base_prompt"
+result=1
+prev_head=""
+prev_churn=0
+prev_check_ok=0
+prev_gate_rc=-1
+prev_gate_fail=""
+aborted_reason=""
+current_exec_model="$PI_EXEC_MODEL"
+actual_sched="direct"
+tried_fallback=0
+fallback_next=0
+avoid_model=""
+transport_switched=0
+last_round=0
+last_arbiter_file=""
+arbiter_accepted=0
+
+review_verdict() {
+  FORGE_ROUND="$round" FORGE_GATE_HEAD="$cur_head" GATE_WARNS="$gate_warns" "$FORGE/bin/review" "$id" > "$review_file" \
+    && jq -er --arg head "$cur_head" 'select(.head_sha == $head) | .verdict | select(. == "pass" or . == "fail")' "$review_file" \
+    || echo error
+}
+
+task_head() { git -C "$REPO" rev-parse --verify "task/$id"; }
+
+# Pin every validation stage to one commit. If an external writer moves the
+# branch, repeat validation on its new HEAD without asking Pi to edit again.
+check_candidate() {
+  local attempt warn="" current_arbiter
+  for attempt in 1 2; do
+    cur_head="$(task_head)" || return 1
+    printf '%s\nhead: %s\n' "$exec_info" "$cur_head" > "$round_log"
+    [ -z "$warn" ] || echo "$warn" >> "$round_log"
+    FORGE_GATE_HEAD="$cur_head" "$FORGE/bin/gate" "$id" >> "$round_log"; g=$?
+    current_arbiter=""
+    if [ "$g" = 0 ]; then
+      gate_warns="$(grep '^WARN ' "$round_log" || true)"
+      rv="$(review_verdict)"
+      [ "$rv" = error ] && rv="$(review_verdict)"
+      echo "review: $rv" >> "$round_log"
+      if [ "$rv" = fail ] && [ "$ARBITER_ENABLED" = 1 ] && [ "$round" -ge "$ARBITER_MIN_ROUND" ]; then
+        current_arbiter="$state/arbiter-$round.json"
+        arb_decision=error
+        local arb_out
+        if arb_out="$(FORGE_GATE_HEAD="$cur_head" "$FORGE/bin/arbiter" "$id" "$round" "$review_file")" && [ -n "$arb_out" ]; then
+          arb_decision="$(printf '%s\n' "$arb_out" | jq -er --arg head "$cur_head" 'select(.head_sha == $head) | .decision')" || arb_decision=error
+          if [ "$arb_decision" != error ]; then
+            printf '%s\n' "$arb_out" > "$current_arbiter.run.$$" && mv -f "$current_arbiter.run.$$" "$current_arbiter"
+          fi
+        fi
+        echo "arbiter: $arb_decision" >> "$round_log"
+      fi
+    fi
+    if [ "$cur_head" = "$(task_head)" ]; then
+      [ -z "$current_arbiter" ] || last_arbiter_file="$current_arbiter"
+      return 0
+    fi
+    warn="WARN task HEAD changed during validation of $cur_head; discarding stale results"
+    echo "$warn" >> "$round_log"
+    rm -f "$review_file" "$state/arbiter-$round.json" "$state/arbiter-$round.raw.json" "$state/arbiter-$round.err" || return 1
+  done
+  return 1
+}
+
+for round in $(seq 1 "$max_rounds"); do
+  last_round="$round"
+  review_file="$state/review-$round.json"
+  use_arbiter_feedback=0
+  force_fixed_model=0
+  if [ -n "$avoid_model" ]; then
+    requested_model="$PI_EXEC_MODEL"
+  elif [ "$prev_gate_rc" = 0 ]; then
+    requested_model="$PI_EXEC_MODEL"
+    tried_fallback=0
+  elif [ "$round" -gt 1 ] && { [ "$fallback_next" = 1 ] || [ "$round" -eq "$max_rounds" ]; } \
+    && [ "$tried_fallback" = 0 ] && [ "$PI_EXEC_FALLBACK_MODEL" != "$current_exec_model" ]; then
+    requested_model="$PI_EXEC_FALLBACK_MODEL"
+    tried_fallback=1
+    force_fixed_model=1
+  else
+    requested_model="$PI_EXEC_MODEL"
+  fi
+
+  session_id="exec-$id"
+  use_fresh_session=0
+  if [ "$fresh_rounds" = 1 ] || [ "$transport_switched" = 1 ]; then
+    session_id="exec-$id-r$round"
+    use_fresh_session=1
+  fi
+  sched_meta="$state/exec-$round.sched.json"
+  rm -f "$sched_meta"
+  sched_flags=()
+  [ "$force_fixed_model" = 1 ] && sched_flags+=(--fixed)
+  [ "$use_fresh_session" = 1 ] && sched_flags+=(--fresh-session)
+  [ -n "$avoid_model" ] && sched_flags+=(--avoid-model "$avoid_model")
+
+  pre_exec_head="$(task_head 2>/dev/null || echo "")"
+  (
+    export FORGE_SCHED_DIR SOL_MAX_PROCS FORGE_EXEC_SCHED PI_EXEC_MODEL PI_EXEC_OVERFLOW_MODEL PI_EXEC_THINKING PI_EXEC_OVERFLOW_THINKING
+    cd "$wt" && exec "$FORGE/bin/sched" run \
+      --task "$id" --round "$round" --timeout "$exec_timeout" \
+      --log "$state/exec-$round.jsonl" --meta "$sched_meta" \
+      --requested-model "$requested_model" \
+      --thinking "${PI_EXEC_THINKING:-}" \
+      --overflow-model "$PI_EXEC_OVERFLOW_MODEL" \
+      --overflow-thinking "$PI_EXEC_OVERFLOW_THINKING" \
+      --fallback-model "$PI_EXEC_FALLBACK_MODEL" \
+      --session-dir "$state/sessions" --session-id "$session_id" \
+      ${sched_flags[@]+"${sched_flags[@]}"} -- "$prompt"
+  ) &
+  active_sched_pid=$!
+  wait "$active_sched_pid"
+  exec_rc=$?
+  active_sched_pid=""
+  post_exec_head="$(task_head 2>/dev/null || echo "")"
+
+  actual_model="$requested_model"
+  actual_thinking="${PI_EXEC_THINKING:-default}"
+  actual_sched="direct"
+  if [ -s "$sched_meta" ]; then
+    m_val="$(jq -r '.model // empty' "$sched_meta" 2>/dev/null || true)"
+    t_val="$(jq -r '.thinking // empty' "$sched_meta" 2>/dev/null || true)"
+    s_val="$(jq -r '.sched // empty' "$sched_meta" 2>/dev/null || true)"
+    [ -n "$m_val" ] && actual_model="$m_val"
+    [ -n "$t_val" ] && actual_thinking="$t_val"
+    [ -n "$s_val" ] && actual_sched="$s_val"
+  fi
+  current_exec_model="$actual_model"
+  exec_info="exec rc=$exec_rc model=$actual_model thinking=${actual_thinking:-default} sched=$actual_sched"
+
+  round_log="$state/round-$round.txt"
+  if ! check_candidate; then
+    aborted_reason="could not validate a stable task HEAD"
+    break
+  fi
+  if [ $g = 2 ]; then result=2; break; fi
+
+  cur_churn="$(diff_churn "$base" "$cur_head")"
+  cur_gate_fail="$(grep '^FAIL ' "$state/round-$round.txt" || true)"
+  if echo "$cur_gate_fail" | grep -qE '^FAIL (smoke\.sh|check\.sh|accept) '; then
+    cur_check_ok=0
+  else
+    cur_check_ok=1
+  fi
+
+  avoid_model=""
+  transport_switched=0
+  if [ $g != 0 ] && [ "$round" -lt "$max_rounds" ] && [ "$pre_exec_head" = "$post_exec_head" ] \
+    && { [ "$exec_rc" = 142 ] || exec_transport_error "$state/exec-$round.jsonl"; }; then
+    avoid_model="$actual_model"
+    transport_switched=1
+  fi
+
+  fallback_next=0
+  if [ $g != 0 ] && [ "$transport_switched" = 0 ] && [ "$round" -ge 2 ]; then
+    progress_failure=""
+    if [ -n "$prev_head" ] && [ "$cur_head" = "$prev_head" ] && [ "$cur_gate_fail" = "$prev_gate_fail" ]; then
+      progress_failure="no-progress: same HEAD and identical gate failure"
+    elif [ "$prev_check_ok" = 1 ] && [ "$cur_check_ok" = 0 ] && [ "$prev_churn" -gt 0 ] && [ "$cur_churn" -gt $((prev_churn * 2)) ]; then
+      progress_failure="thrashing: checks regressed and diff churn exploded ($prev_churn -> $cur_churn)"
+    fi
+    if [ -n "$progress_failure" ]; then
+      if [ "$tried_fallback" = 0 ] && [ "$PI_EXEC_FALLBACK_MODEL" != "$current_exec_model" ] && [ "$round" -lt "$max_rounds" ]; then
+        fallback_next=1
+      else
+        aborted_reason="$progress_failure"
+        break
+      fi
+    fi
+  fi
+
+  if [ $g = 0 ]; then
+    if [ "$rv" = error ]; then
+      aborted_reason="review-error: L1 reviewer output invalid"
+      break
+    fi
+    if [ "$rv" = pass ]; then result=0; break; fi
+    if [ "$last_arbiter_file" = "$state/arbiter-$round.json" ]; then
+      case "$arb_decision" in
+        accept_as_is) arbiter_accepted=1; result=0; break ;;
+        escalate)
+          aborted_reason="arbiter-escalate: $(jq -r '.rationale_zh // "needs decision"' "$last_arbiter_file")"
+          break ;;
+        narrow_fix|simplify_and_fix)
+          if [ "$round" -ge "$max_rounds" ]; then
+            aborted_reason="arbiter-$arb_decision: remaining must_fix after round $round"
+            break
+          fi
+          use_arbiter_feedback=1 ;;
+      esac
+    fi
+  fi
+
+  prev_head="$cur_head"
+  prev_churn="$cur_churn"
+  prev_check_ok="$cur_check_ok"
+  prev_gate_rc="$g"
+  prev_gate_fail="$cur_gate_fail"
+  [ "$round" -lt "$max_rounds" ] || continue
+
+  # Build clean next-round prompt from gate failures and review issues only
+  fail_details=""
+  grep -q '^FAIL smoke\.sh ' "$state/round-$round.txt" && fail_details="${fail_details}
+smoke.sh 输出末尾:
+$(tail -20 "$state/smoke.out" 2>/dev/null)"
+  grep -q '^FAIL check\.sh ' "$state/round-$round.txt" && fail_details="${fail_details}
+check.sh 输出末尾:
+$(tail -20 "$state/check.out" 2>/dev/null)"
+  grep -q '^FAIL accept ' "$state/round-$round.txt" && fail_details="${fail_details}
+隐藏验收失败摘要:
+$(tail -10 "$state/accept.out" 2>/dev/null)"
+
+  review_feedback=""
+  if [ "$use_arbiter_feedback" = 1 ]; then
+    review_feedback="$(jq -r '
+      (if (.praise_zh // "") != "" then "团队肯定与亮点：\(.praise_zh)" else empty end),
+      "Carbon 业务仲裁：\(.rationale_zh)",
+      (if (.simplify_directives | length) > 0 then
+        "必须剥离/简化的过度防御代码:", (.simplify_directives[] | "- \(.)") else empty end),
+      "本轮唯一必须修复的真实问题:",
+      (.must_fix[] | "- [\(.severity)] (\(.id)) \(.file):\(.line) \(.msg)"),
+      (if (.drop_issues | length) > 0 then
+        "已由业务仲裁直接断言无需修改的审查项（严禁为此增加防御代码或分支）:",
+        (.drop_issues[] | "- \(.)") else empty end)' "$last_arbiter_file")"
+  elif [ "$g" = 0 ]; then
+    review_feedback="审查问题:
+$(jq -r '
+  (.issues[] | select(.severity == "high" or .severity == "med") | "- [\(.severity)] (\(.id)) \(.file):\(.line) \(.msg)"),
+  (.premise // "" | select(. != "") | "参考简化提示（仅限在 spec 与 scope 范围内复用现成机制，严禁借此扩大修改范围或违背 spec）:\n\(.)")' "$review_file")
+收敛硬约束：优先复用仓库现成机制或删减冗余分支解决上述高/中危问题；严禁新增无 spec 要求且无真实调用方证据支持的持久化存储键、全局缓存层或辅助状态机。"
+  fi
+
+  feedback="辛苦了！上一轮代码主体与推进非常扎实 (第 $round 轮)，接下来只需聚焦修正以下收敛项并重新 commit、更新 status.json。
+门禁结果:
+$(grep -E '^(FAIL|WARN)' "$state/round-$round.txt")
+$fail_details
+当前改动规模:
+$(git -C "$REPO" diff --stat "$base" "task/$id" 2>/dev/null)
+$review_feedback"
+
+  if [ "$fresh_rounds" = 1 ] || [ "$transport_switched" = 1 ]; then
+    prompt="$base_prompt
+
+---
+$feedback"
+  else
+    prompt="$feedback"
+  fi
+done
+
+{
+  churn="$(diff_churn "$base" "task/$id")"
+  dbytes="$(diff_bytes "$base" "task/$id")"
+  echo "task $id  rounds=$last_round  exec_model=$current_exec_model  sched=$actual_sched  $(git -C "$REPO" diff --shortstat "$base" "task/$id" 2>/dev/null)  churn=$churn bytes=$dbytes"
+  grep -E '^(FAIL|WARN|BLOCKED)' "$state/round-$last_round.txt" 2>/dev/null || true
+  review_file="$state/review-$last_round.json"
+  remaining_file="$review_file"
+  if [ "$last_arbiter_file" = "$state/arbiter-$last_round.json" ]; then
+    case "$arb_decision" in
+      accept_as_is|narrow_fix|simplify_and_fix) remaining_file="$last_arbiter_file" ;;
+    esac
+  fi
+  if [ -s "$remaining_file" ]; then
+    jq -r '[ (.must_fix // .issues)[]? | select(.severity == "high" or .severity == "med") ][:8][]
+      | "  [\(.severity)] (\(.id)) \(.file):\(.line) \(.msg)"' "$remaining_file"
+  fi
+  if [ -s "$review_file" ]; then
+    jq -r '.premise // "" | select(. != "") | "PREMISE  \(.)"' "$review_file"
+  fi
+  if [ -f "$last_arbiter_file" ]; then
+    jq -r --arg model "$AGY_ARBITER_MODEL" '"ARBITER  round=\(.round) decision=\(.decision) model=\(.model // $model)  \(.rationale_zh // "")"
+      | gsub("[\\r\\n]"; " ")' "$last_arbiter_file"
+    jq -r '(.praise_zh // "") | select(. != "") | "PRAISE  \(.)" | gsub("[\\r\\n]"; " ")' "$last_arbiter_file"
+  fi
+  case $result in
+    0)
+      audit_reasons=""
+      [ "$last_round" -gt 1 ] && audit_reasons="${audit_reasons} rounds=$last_round"
+      [ "$churn" -gt 100 ] && audit_reasons="${audit_reasons} churn=$churn"
+      [ "$dbytes" -gt 200000 ] && audit_reasons="${audit_reasons} diff_bytes=$dbytes"
+      warn_cnt="$(grep -c '^WARN ' "$state/round-$last_round.txt" || true)"
+      [ "$warn_cnt" -gt 0 ] && audit_reasons="${audit_reasons} gate_warns=$warn_cnt"
+      med_high_cnt="$(jq '[.issues[] | select(.severity=="high" or .severity=="med")] | length' "$review_file")"
+      if [ "$arbiter_accepted" = 1 ]; then
+        audit_reasons="${audit_reasons} arbiter=accept_as_is"
+      elif [ "$med_high_cnt" -gt 0 ]; then
+        audit_reasons="${audit_reasons} review_med_high=$med_high_cnt"
+      fi
+      if { [ -n "$audit_reasons" ] && [ "${TOP_AUDIT:-1}" != 0 ]; } || [ "${TOP_AUDIT:-0}" = 1 ]; then
+        audit_flag=""
+        [ "${TOP_AUDIT_LIGHT:-0}" = 1 ] && audit_flag="--light"
+        if audit_json="$("$FORGE/bin/audit" ${audit_flag:+$audit_flag} --review "$review_file" ${last_arbiter_file:+--arbiter "$last_arbiter_file"} "$id")" && [ -n "$audit_json" ]; then
+          av="$(echo "$audit_json" | jq -r '.verdict // "error"' 2>/dev/null || echo error)"
+          am="$(echo "$audit_json" | jq -r '.model // ""' 2>/dev/null || echo "")"
+          asum="$(echo "$audit_json" | jq -r '.summary_zh // ""' 2>/dev/null || echo "")"
+          echo "L2_AUDIT  verdict=$av model=$am  $asum"
+          echo "$audit_json" | jq -r '.arch_risks[]? | "  [L2:\(.severity)] \(.file):\(.line) \(.msg)"' 2>/dev/null | head -6
+          echo "$audit_json" | jq -r '.premise // "" | select(. != "") | "L2_PREMISE  \(.)"' 2>/dev/null
+        else
+          echo 'L2_AUDIT  verdict=error  audit command failed or returned no output'
+        fi
+      fi
+      if [ "$cur_head" != "$(task_head)" ]; then
+        result=1
+        echo "ESCALATE  task HEAD changed after validation of $cur_head; rerun bin/run $id"
+      else
+        echo "$cur_head" > "$state/approved_head"
+        echo "READY  (merge: bin/merge $id)"
+        if [ -n "$audit_reasons" ]; then
+          echo "AUDIT  required (${audit_reasons# })"
+        fi
+      fi
+      ;;
+    1) echo "ESCALATE  failed after $last_round round(s)${aborted_reason:+ ($aborted_reason)}" ;;
+    2) echo "BLOCKED  needs decision" ;;
+  esac
+} > "$state/summary.txt"
+cat "$state/summary.txt"
+exit $result

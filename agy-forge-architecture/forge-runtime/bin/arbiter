@@ -1,0 +1,306 @@
+#!/bin/bash
+# Independent Carbon adjudication of L1 blocking issues on a detached snapshot.
+# Usage: bin/arbiter <id> <round> [review_json_path]
+set -uo pipefail
+id="${1:?usage: arbiter <id> <round> [review_json_path]}"
+round="${2:?missing round}"
+source "$(dirname "$0")/lib.sh"
+review_json_path="${3:-$state/review-$round.json}"
+head_sha="$(git -C "$REPO" rev-parse --verify "task/$id" 2>/dev/null || echo "")"
+output="$state/arbiter-$round.json"
+raw_archive="$state/arbiter-$round.raw.json"
+raw_tmp="$(mktemp "${TMPDIR:-/tmp}/forge-arbiter-raw.XXXXXX")" || exit 1
+ro_wt=""
+bundle_dir=""
+git_link=""
+
+cleanup() {
+  rm -f "$raw_tmp"
+  if [ -n "$ro_wt" ]; then
+    find "$ro_wt" -type d -exec chmod u+w {} +
+    [ -z "$git_link" ] || printf '%s\n' "$git_link" > "$ro_wt/.git"
+    git -C "$REPO" worktree remove --force "$ro_wt" >/dev/null 2>&1 || rm -rf "$ro_wt"
+  fi
+  if [ -n "$bundle_dir" ]; then
+    chmod u+w "$bundle_dir"
+    rm -rf "$bundle_dir"
+  fi
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+prepare_context() {
+  # Use the same canonical paths in the prompt and AGY's directory arguments.
+  local temp_root
+  temp_root="$(cd "${TMPDIR:-/tmp}" && pwd -P)" || return 1
+  ro_wt="$(mktemp -d "${temp_root%/}/forge-arbiter-tree.XXXXXX")" &&
+    bundle_dir="$(mktemp -d "${temp_root%/}/forge-arbiter-context.XXXXXX")" &&
+    git -C "$REPO" worktree add --detach -q "$ro_wt" "$head_sha" || return 1
+
+  issues_json="$(python3 - "$id" "$round" "$head_sha" "$REPO" "$FORGE" "$state" "$review_json_path" "$bundle_dir" "$ro_wt" <<'PY'
+import json, os, re, stat, subprocess, sys
+from pathlib import Path
+
+id, round, head, repo = sys.argv[1:5]
+forge, state, review, bundle, tree = map(Path, sys.argv[5:])
+
+# A checkout can contain links. Keep internal links, but do not give tools a
+# path out of the detached tree (including through a directory-link chain).
+for directory, dirs, files in os.walk(tree):
+    for name in dirs + files:
+        path = Path(directory, name)
+        if path.is_symlink() and not path.resolve().is_relative_to(tree):
+            sys.exit(f"external snapshot symlink: {path.relative_to(tree)}")
+
+
+def input_dir(group):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    parent = os.open(forge / group, flags)
+    try:
+        return os.open(id, flags, dir_fd=parent)
+    finally:
+        os.close(parent)
+
+
+def read_input(name, directory, optional=False):
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    except FileNotFoundError:
+        if optional:
+            return None
+        raise
+    with os.fdopen(fd, encoding="utf-8") as fp:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            sys.exit(f"expected regular input file: {name}")
+        return fp.read()
+
+
+task_fd, state_fd = input_dir("tasks"), input_dir("logs")
+base = read_input("base", state_fd).strip()
+if review.parent == state:
+    review_dir = state_fd
+else:
+    parent = review.parent.resolve()
+    if parent.is_relative_to((forge / "accept").resolve()):
+        sys.exit("hidden acceptance directory is not a review input")
+    review_dir = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+if review.name in ("accept.out", "smoke.out", "check.out"):
+    sys.exit("gate output is not a review input")
+current_text = read_input(review.name, review_dir)
+current = json.loads(current_text)
+if (not isinstance(current, dict) or not isinstance(current.get("issues"), list)
+        or not all(isinstance(issue, dict) for issue in current["issues"])):
+    sys.exit("invalid review issues")
+if current.get("head_sha", head) != head:
+    sys.exit("review HEAD does not match arbiter snapshot")
+
+
+def git_diff(*args):
+    return subprocess.check_output(["git", "-C", repo, "diff", "--no-ext-diff", "--no-textconv", *args, base, head])
+
+
+with (bundle / "context.md").open("w", encoding="utf-8") as fp:
+    def section(title, text):
+        print(f"\n## {title}\n{text}", file=fp)
+
+    print(f"# Task {id}\nround: {round}\nbase: {base}\nhead_sha: {head}", file=fp)
+    print("\n## Churn progression", file=fp)
+    for n in range(1, int(round) + 1):
+        log = read_input(f"round-{n}.txt", state_fd, optional=True)
+        if log is not None:
+            for line in log.splitlines():
+                if re.match(r"^[ \t]*(diff:|churn:|WARN )", line):
+                    print(f"Round {n}: {line.lstrip()}", file=fp)
+
+    section("spec.md", read_input("spec.md", task_fd))
+    for name in ("smoke.sh", "check.sh"):
+        text = read_input(name, task_fd, optional=True)
+        if text is not None:
+            section(name, text)
+
+    for n in range(1, int(round) + 1):
+        name = f"review-{n}.json"
+        text = current_text if n == int(round) else read_input(name, state_fd, optional=True)
+        if text is not None:
+            section(name, text)
+    blocking = [i for i in current["issues"] if i["severity"] in ("high", "med")]
+    section("Current high/med issues (adjudicate every ID)", json.dumps(blocking, ensure_ascii=False, indent=2))
+    section("Current review premise", current.get("premise") or "")
+
+    files = git_diff("--name-only").decode("utf-8", errors="replace")
+    section("git diff --stat", git_diff("--stat").decode("utf-8", errors="replace"))
+    section("git diff --name-only", files)
+    diff = git_diff()
+    if len(diff) > 120000:
+        print(f"\n[DIFF TRUNCATED: total {len(diff)} bytes > 120000 limit]", file=fp)
+        print("Use read_file in the detached snapshot to inspect any truncated or referenced file before rebutting an issue on it. All changed files:", file=fp)
+        print(files, file=fp)
+    section("git diff", diff[:120000].decode("utf-8", errors="replace"))
+# Validate against the exact issues bundled, not a second read of a live file.
+print(json.dumps(blocking))
+PY
+)" || return 1
+
+  # Hide the pointer back to the repository metadata and expose only read-only files.
+  git_link="$(cat "$ro_wt/.git")" && rm "$ro_wt/.git" &&
+    find "$ro_wt" \( -type d -o -type f \) -exec chmod a-w {} + &&
+    chmod a-w "$bundle_dir" "$bundle_dir/context.md"
+}
+
+error=""
+if [ -z "$head_sha" ] || [ ! -f "$review_json_path" ] || [ ! -r "$review_json_path" ]; then
+  error="missing head or review json"
+elif [ "${FORGE_GATE_HEAD:-$head_sha}" != "$head_sha" ]; then
+  error="task HEAD changed since gate"
+elif ! prepare_context; then
+  error="failed to prepare arbiter context"
+else
+  outer_timeout=$((ARBITER_TIMEOUT + 15))
+  [ "$ARBITER_TIMEOUT" -le 5 ] && outer_timeout=$((ARBITER_TIMEOUT + 1))
+  short_prompt="Read $bundle_dir/context.md. Use only read_file (prefer StartLine/EndLine windows around target lines instead of reading huge files whole) to verify source in $ro_wt, including any truncated or referenced file before rebutting its issue. Do not modify files. Adjudicate every current high/med issue ID: in round 1 require concrete file:line disproof before rebutting money/state/reachable-caller bugs, directly assert rebut for hypothetical multi-fault or non-production edge cases unnecessary to fix, keep genuine defects, or escalate spec premise conflicts. Also include praise_zh warmly recognizing specific strong work by the executor and L1 reviewers. Return only one raw JSON object, no markdown fences:
+{\"decision\":\"accept_as_is|narrow_fix|simplify_and_fix|escalate\",\"rationale_zh\":\"...\",\"praise_zh\":\"...\",\"issue_rulings\":[{\"id\":\"I1\",\"action\":\"keep|rebut\",\"reason_zh\":\"...\",\"evidence\":\"...\"}],\"must_fix\":[{\"id\":\"I1\",\"severity\":\"high|med\",\"file\":\"...\",\"line\":0,\"msg\":\"...\"}],\"drop_issues\":[\"...\"],\"simplify_directives\":[\"...\"]}"
+  ( cd "$ro_wt" && perl -e 'alarm shift; exec @ARGV' "$outer_timeout" "$AGY_BIN" \
+    --agent "$AGY_ARBITER_AGENT" --model "$AGY_ARBITER_MODEL" --add-dir "$ro_wt" \
+    --add-dir "$bundle_dir" --disable-slash-commands --output-format json \
+    --print-timeout "${ARBITER_TIMEOUT}s" -p="$short_prompt" ) > "$raw_tmp" 2> "$state/arbiter-$round.err"
+  arb_rc=$?
+  cp -f "$raw_tmp" "$raw_archive" 2>/dev/null || true
+  [ "$arb_rc" = 0 ] || error="agy exited $arb_rc"
+fi
+
+python3 - "$output" "$raw_tmp" "$REPO" "$id" "$round" "$head_sha" \
+  "$AGY_ARBITER_MODEL" "$AGY_ARBITER_AGENT" "$error" 3<<<"${issues_json:-}" <<'PY'
+import json, os, re, subprocess, sys, tempfile
+from pathlib import Path
+
+output, raw = map(Path, sys.argv[1:3])
+repo, id, round, head, model, agent, error = sys.argv[3:]
+
+
+class InvalidDecision(ValueError):
+    pass
+
+
+def parse_response(text):
+    decoder = json.JSONDecoder()
+    end = 0
+    for start in re.finditer(r"\{", text):
+        if start.start() < end:
+            continue  # Do not mistake a nested object for an outer envelope.
+        try:
+            envelope, end = decoder.raw_decode(text, start.start())
+        except json.JSONDecodeError:
+            continue  # CLI may prefix spinner output.
+        if isinstance(envelope, dict) and ("status" in envelope or "response" in envelope):
+            if envelope.get("status") != "SUCCESS" or not isinstance(envelope.get("response"), str):
+                raise InvalidDecision("agy did not return a successful response envelope")
+            response = envelope["response"].strip()
+            fence = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", response, re.S | re.I)
+            return json.loads(fence[1] if fence else response)
+    raise InvalidDecision("missing agy response envelope")
+
+
+def list_field(obj, field, item_type):
+    items = obj.get(field, [])
+    if not isinstance(items, list) or any(not isinstance(item, item_type) for item in items):
+        raise InvalidDecision(f"invalid {field}")
+    return items
+
+
+def validate(result, issues):
+    if not isinstance(result, dict):
+        raise InvalidDecision("response is not an object")
+    decision = result.get("decision")
+    if decision not in ("accept_as_is", "narrow_fix", "simplify_and_fix", "escalate"):
+        raise InvalidDecision("invalid decision")
+
+    expected = {}
+    for issue in issues:
+        issue_id = issue.get("id")
+        if not isinstance(issue_id, str) or not issue_id or issue_id in expected:
+            raise InvalidDecision("review has a missing or duplicate blocking issue ID")
+        expected[issue_id] = issue
+    rulings = list_field(result, "issue_rulings", dict)
+    seen, kept, dropped = set(), [], []
+    for ruling in rulings:
+        issue_id, action = ruling.get("id"), ruling.get("action")
+        if not isinstance(issue_id, str) or issue_id not in expected or issue_id in seen:
+            raise InvalidDecision("unknown or duplicate issue ruling ID")
+        seen.add(issue_id)
+        if action == "keep":
+            kept.append(issue_id)
+        elif action == "rebut":
+            reason = next((s.strip() for s in (ruling.get("reason_zh"), ruling.get("evidence"))
+                           if isinstance(s, str) and s.strip()), "")
+            if not reason:
+                raise InvalidDecision(f"rebuttal without reason or evidence: {issue_id}")
+            issue = expected[issue_id]
+            if "file" not in issue or "line" not in issue:
+                raise InvalidDecision(f"review is missing file or line for {issue_id}")
+            dropped.append(f"{issue_id} ({issue['file']}:{issue['line']}): {reason}")
+        else:
+            raise InvalidDecision(f"invalid ruling action: {issue_id}")
+    if decision != "escalate" and expected.keys() - seen:
+        raise InvalidDecision("missing rulings: " + ", ".join(sorted(expected.keys() - seen)))
+
+    must_fix = list_field(result, "must_fix", dict)
+    drops = list_field(result, "drop_issues", str)
+    simplify = list_field(result, "simplify_directives", str)
+    rationale = result.get("rationale_zh", "")
+    if not isinstance(rationale, str):
+        raise InvalidDecision("invalid rationale_zh")
+    praise = result.get("praise_zh", "")
+    if praise is None:
+        praise = ""
+    if not isinstance(praise, str):
+        raise InvalidDecision("invalid praise_zh")
+    pending = kept or must_fix or simplify
+    if decision == "accept_as_is" and pending:
+        decision = "simplify_and_fix" if simplify else "narrow_fix"
+    if decision in ("narrow_fix", "simplify_and_fix"):
+        if not pending:
+            raise InvalidDecision("fix decision without any pending work")
+        supplied = [item.get("id") for item in must_fix]
+        must_fix.extend(expected[i] for i in kept if i not in supplied)
+
+    kept_set = set(kept)
+    seen_fix_ids = set()
+    for item in must_fix:
+        if (not all(isinstance(item.get(k), str) and item[k].strip() for k in ("id", "file", "msg"))
+                or item.get("severity") not in ("high", "med")
+                or type(item.get("line")) is not int or item["line"] < 0):
+            raise InvalidDecision("incomplete must_fix issue")
+        if item["id"] not in kept_set or item["id"] in seen_fix_ids:
+            raise InvalidDecision(f"must_fix ID {item['id']} is not a unique kept issue")
+        seen_fix_ids.add(item["id"])
+
+    out = dict(decision=decision, rationale_zh=" ".join(rationale.split()), issue_rulings=rulings,
+               must_fix=must_fix, drop_issues=drops or dropped, simplify_directives=simplify,
+               model=model, agent=agent)
+    clean_praise = " ".join(praise.split())
+    if clean_praise:
+        out["praise_zh"] = clean_praise
+    return out
+
+
+try:
+    if error:
+        raise InvalidDecision(error)
+    with os.fdopen(3) as fp:
+        issues = json.load(fp)
+    result = validate(parse_response(raw.read_text(encoding="utf-8", errors="replace")), issues)
+    ref = subprocess.run(["git", "-C", repo, "rev-parse", "--verify", f"task/{id}"],
+                         capture_output=True, text=True)
+    if ref.returncode != 0 or ref.stdout.strip() != head:
+        raise InvalidDecision("task HEAD changed during arbitration")
+except (InvalidDecision, json.JSONDecodeError, OSError) as exc:
+    result = {"decision": "error", "error": str(exc)}
+
+result.update(head_sha=head, round=int(round))
+text = json.dumps(result, ensure_ascii=False)
+with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as fp:
+    print(text, file=fp)
+os.replace(fp.name, output)
+print(text)
+sys.exit(result["decision"] == "error")
+PY

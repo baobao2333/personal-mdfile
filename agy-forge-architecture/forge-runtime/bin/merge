@@ -1,0 +1,17 @@
+#!/bin/bash
+# Merge an accepted task into main and record its task files. Usage: bin/merge <id>
+set -euo pipefail
+id="${1:?usage: merge <id>}"
+source "$(dirname "$0")/lib.sh"
+[ "$REPO" = "$FORGE" ] || { echo "external repo task: branch task/$id in $REPO is left for human review; not merging" >&2; exit 1; }
+if [ -f "$state/approved_head" ]; then
+  [ "$(git -C "$FORGE" rev-parse --verify "task/$id")" = "$(cat "$state/approved_head")" ] \
+    || { echo "refusing merge: branch task/$id moved since READY approval; rerun bin/run $id" >&2; exit 1; }
+fi
+cd "$FORGE"
+git merge -q --no-ff "task/$id" -m "accept $id"
+git add "tasks/$id"
+git commit -q -m "$id: spec, check, report" || true
+git worktree remove "$wt"
+git branch -d "task/$id"
+git log --oneline -1

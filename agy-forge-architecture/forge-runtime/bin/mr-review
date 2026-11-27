@@ -1,0 +1,131 @@
+#!/bin/bash
+# Standalone pre-push / pre-MR independent diff audit by GPT-6.2-Astra with read-only repo tools.
+# Works for both forge branches and direct-edit branches before pushing or opening an MR.
+#
+# Usage:
+#   bash ~/forge/bin/mr-review <repo_path> <base_ref> <head_ref> [--focus "<audit focus>"] [--peer <repo_path>:<ref>] [--spec <spec_file>] [--arbiter <arbiter_json>]
+set -euo pipefail
+
+if [ "$#" -lt 3 ]; then
+  echo "usage: mr-review <repo_path> <base_ref> <head_ref> [--focus <text>] [--peer <repo>:<ref>] [--spec <file>] [--arbiter <file>]" >&2
+  exit 2
+fi
+
+REPO="$1"
+BASE_REF="$2"
+HEAD_REF="$3"
+shift 3
+
+FOCUS=""
+SPEC_FILE=""
+ARBITER_FILES=()
+PEERS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --focus)
+      FOCUS="${2:?missing --focus argument}"
+      shift 2
+      ;;
+    --peer)
+      PEERS+=("${2:?missing --peer argument}")
+      shift 2
+      ;;
+    --spec)
+      SPEC_FILE="${2:?missing --spec argument}"
+      shift 2
+      ;;
+    --arbiter)
+      ARBITER_FILES+=("${2:?missing --arbiter argument}")
+      shift 2
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+REVIEW_MODEL="${PI_MR_REVIEW_MODEL:-openai/gpt-6.2-astra}"
+REVIEW_THINKING="${PI_MR_REVIEW_THINKING:-high}"
+
+WT="$(mktemp -d "${TMPDIR:-/tmp}/forge-mr-review.XXXXXX")"
+DIFF_FILE="$(mktemp "${TMPDIR:-/tmp}/forge-mr-diff.XXXXXX")"
+PEER_WTS=()
+
+cleanup() {
+  git -C "$REPO" worktree remove --force "$WT" >/dev/null 2>&1 || rm -rf "$WT" >/dev/null 2>&1 || true
+  rm -f "$DIFF_FILE" >/dev/null 2>&1 || true
+  local entry p_repo p_wt
+  for entry in "${PEER_WTS[@]+"${PEER_WTS[@]}"}"; do
+    p_repo="${entry%%|*}"
+    p_wt="${entry#*|}"
+    git -C "$p_repo" worktree remove --force "$p_wt" >/dev/null 2>&1 || rm -rf "$p_wt" >/dev/null 2>&1 || true
+  done
+}
+trap cleanup EXIT
+
+git -C "$REPO" worktree add --detach -q "$WT" "$HEAD_REF"
+
+peer_notes=""
+for spec in "${PEERS[@]+"${PEERS[@]}"}"; do
+  p_repo="${spec%%:*}"
+  p_ref="${spec#*:}"
+  p_wt="$(mktemp -d "${TMPDIR:-/tmp}/forge-mr-peer.XXXXXX")"
+  git -C "$p_repo" worktree add --detach -q "$p_wt" "$p_ref"
+  PEER_WTS+=("${p_repo}|${p_wt}")
+  peer_notes="${peer_notes}
+- Peer repo (${p_ref} at ${p_wt}): use read/grep/find/ls inside this directory to verify cross-repo contracts."
+done
+
+DIFF_STAT="$(git -C "$REPO" diff --stat "${BASE_REF}..${HEAD_REF}")"
+git -C "$REPO" diff "${BASE_REF}..${HEAD_REF}" > "$DIFF_FILE"
+DIFF_BYTES="$(wc -c < "$DIFF_FILE" | tr -d ' ')"
+TRUNC_NOTE=""
+if [ "${DIFF_BYTES:-0}" -gt 200000 ]; then
+  TRUNC_NOTE="[DIFF TRUNCATED at 200000 bytes (total ${DIFF_BYTES} bytes). Inspect remaining changed files via read/grep in ${WT}.]"
+fi
+
+spec_notes=""
+if [ -n "$SPEC_FILE" ] && [ -f "$SPEC_FILE" ]; then
+  spec_notes="$(cat "$SPEC_FILE")"
+fi
+
+arbiter_notes=""
+for af in "${ARBITER_FILES[@]+"${ARBITER_FILES[@]}"}"; do
+  if [ -f "$af" ]; then
+    arbiter_notes="${arbiter_notes}
+$(cat "$af")"
+  fi
+done
+
+cd "$WT"
+{
+  cat <<EOF
+You are an independent senior code reviewer performing a de-biased pre-MR audit of \`${BASE_REF}..${HEAD_REF}\`. Thank you for your sharp, constructive review!
+Read-only worktree of \`${HEAD_REF}\`: ${WT}
+${peer_notes:+Cross-repo read-only checkouts:${peer_notes}}
+
+Mandatory audit protocol (do NOT trust assumptions — verify in real code using read/grep/find/ls):
+1. Trace ALL downstream callers and shared entrypoints of every modified function, default parameter, route, config table, or schema (e.g., search, recommendations, push, sub-tabs, background jobs, legacy paths).
+2. Attack edge cases: small/empty datasets, fallback/default paths, cursor/state compatibility across rolling deploys, schema/config validation (unknown keys, duplicate keys, wrong types), and security/isolation boundaries.
+3. Verify cross-repo / client-server contracts directly against any provided peer repo checkout; flag unverified cross-repo premises explicitly.
+4. Report concrete defects with exact \`file:line\` references. High/Medium are blocking ONLY for unmet spec.md requirements or spec-gaming; grep-verified regressions in reachable downstream callers; money, ledger, state, or UI corruption under a single realistic runtime fault (normal network retry/timeout, token expiry during retry, empty/small datasets, app restart); or security/isolation flaws reachable in production configuration. Do NOT flag explicit product/UX design choices from \`spec.md\` as defects, and do NOT re-open items already dismissed in prior business arbitration unless you verify a concrete new cross-repo or integration caller regression.
+5. Rate as Low (non-blocking): compound low-probability faults not required by spec.md (mid-action AB group flip plus undrained rolling-deploy worker skew), assuming production-enforced auth/security switches are off in debug/legacy modes, synthetic extreme internal-admin inputs (1e308, NaN) unreachable from user traffic, and unrequested new persistence schemas for theoretical compatibility races. Ignore cosmetic nitpicks; open with 1 concise sentence recognizing specific well-crafted engineering choices in this diff, and state explicitly if no High/Medium issues remain.
+${FOCUS:+
+Additional audit focus:
+${FOCUS}
+}${spec_notes:+
+## Authoritative Task Spec (do NOT treat explicit spec requirements as bugs)
+${spec_notes}
+}${arbiter_notes:+
+## Prior Pragmatic Business Arbitration Context (re-open ONLY with new cross-repo/caller proof)
+${arbiter_notes}
+}
+## git diff --stat (${DIFF_BYTES} bytes)
+${DIFF_STAT}
+${TRUNC_NOTE}
+
+## git diff (${BASE_REF}..${HEAD_REF})
+EOF
+  head -c 200000 "$DIFF_FILE"
+} | pi -p --no-session --tools read,grep,find,ls --model "$REVIEW_MODEL" --thinking "$REVIEW_THINKING"

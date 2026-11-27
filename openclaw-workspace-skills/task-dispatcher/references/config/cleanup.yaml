@@ -258,8 +258,8 @@ blacklist:
   # 重要目录
   # ---------------------------------------------------------------------------
   directories:
-    - "/Users/xiaotiac/.openclaw/workspace"
-    - "/Users/xiaotiac/.openclaw/agents"
+    - "/Users/<USER>/.openclaw/workspace"
+    - "/Users/<USER>/.openclaw/agents"
     - "**/src/"
     - "**/lib/"
     - "**/include/"

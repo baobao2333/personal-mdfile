@@ -1,0 +1,77 @@
+#!/bin/bash
+# L2 top-level cross-model architectural & intent audit (Gemini 4 Neon / Hydrogen).
+# Invoked only at the top level (e.g. when READY triggers AUDIT, or manually by AGY).
+# Usage: bin/audit [--light] [--review <path>] [--arbiter <path>] <id>
+set -uo pipefail
+light=0
+last_review=""
+arbiter_file=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --light) light=1; shift ;;
+    --review) last_review="${2:?missing --review path}"; shift 2 ;;
+    --arbiter) arbiter_file="${2:?missing --arbiter path}"; shift 2 ;;
+    *) break ;;
+  esac
+done
+id="${1:?usage: audit [--light] [--review <path>] [--arbiter <path>] <id>}"
+source "$(dirname "$0")/lib.sh"
+base="$(cat "$state/base")"
+
+audit_model="$PI_AUDIT_MODEL"
+[ "$light" = 1 ] && audit_model="$PI_LIGHT_MODEL"
+
+dbytes="$(diff_bytes "$base" "task/$id")"
+diffstat="$(git -C "$REPO" diff --stat "$base" "task/$id" 2>/dev/null)"
+trunc_note=""
+if [ "${dbytes:-0}" -gt 200000 ]; then
+  trunc_note="[DIFF TRUNCATED: total ${dbytes} bytes > 200000 limit. Use read/grep in $wt to inspect remaining files.]"
+fi
+
+if [ -z "$last_review" ]; then
+  last_review="$(ls -1 "$state"/review-*.json 2>/dev/null | sort -V | tail -1 || true)"
+fi
+review_summary=""
+[ -f "$last_review" ] && review_summary="$(cat "$last_review")"
+arbiter_section=""
+if [ -f "$arbiter_file" ]; then
+  arbiter_section="
+## Carbon 业务仲裁记录
+$(cat "$arbiter_file")
+"
+fi
+
+prompt="你是 forge 流程中的 L2 顶层架构与意图终审专家（跨模型审查，审视 GPT 执行与 L1 过程审查后的最终产出）。不要修改任何文件。
+工作目录: $wt (只读，可用 read/grep/find/ls 核查跨文件上下文)
+
+审查重点（勿重复纠结局部语法/风格）：
+1. 顶层架构与跨文件一致性：改动是否破坏模块边界、引入隐式耦合或与仓库既有架构冲突？
+2. 真实意图对齐：是否存在机械满足 spec 字面条件、却偏离用户真实目标或遗漏关键交互/状态边界的情况？
+3. 沟通与交接可读性：用简洁中文总结实际改动与风险点，供 AGY 验收及向用户汇报。
+4. 前提核验：如果发现根本更短路径或错误前提，写入 premise 字段并附 file:line 证据。
+
+只输出一个 JSON 对象，不要代码块，不要其他文字：
+{\"verdict\":\"approve\"|\"caution\"|\"reject\",\"summary_zh\":\"80字内中文终审摘要\",\"arch_risks\":[{\"severity\":\"high|med|low\",\"file\":\"...\",\"line\":0,\"msg\":\"...\"}],\"premise\":\"\"}
+
+## spec
+$(cat "$task/spec.md")
+
+## L1 过程审查记录
+${review_summary:-(无)}
+$arbiter_section
+## diff --stat (${dbytes} bytes)
+$diffstat
+$trunc_note
+
+## diff
+$(git -C "$REPO" diff "$base" "task/$id" | head -c 200000)"
+
+log="$state/audit.jsonl"
+( cd "$wt" && pi_run 1800 "$log" --no-session --model "$audit_model" --tools read,grep,find,ls "$prompt" )
+out="$(lasttext "$log" | sed -e 's/^```json//' -e 's/^```//' | tr -d '\r')"
+json_out="$(echo "$out" | perl -0ne 'print $1 if /(\{.*\})/s' | jq -c --arg m "$audit_model" '. + {model: $m}' 2>/dev/null || true)"
+if [ -z "$json_out" ]; then
+  json_out="$(jq -cn --arg m "$audit_model" '{verdict:"error",summary_zh:"L2 顶层终审未返回合法 JSON",arch_risks:[],premise:"",model:$m}')"
+fi
+echo "$json_out" > "$state/audit.json"
+echo "$json_out"

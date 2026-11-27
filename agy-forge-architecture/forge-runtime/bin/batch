@@ -1,0 +1,70 @@
+#!/bin/bash
+# Parallel batch runner for forge tasks with bounded concurrency.
+# Usage: bin/batch [--jobs N] <id1> <id2> ...
+set -uo pipefail
+FORGE="$(cd "$(dirname "$0")/.." && pwd)"
+jobs=3
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --jobs|-j) jobs="${2:?missing jobs count}"; shift 2 ;;
+    -h|--help)
+      echo "Usage: bin/batch [--jobs N] <id1> <id2> ..."
+      exit 0
+      ;;
+    --) shift; break ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+
+[ $# -gt 0 ] || { echo "Usage: bin/batch [--jobs N] <id1> <id2> ..." >&2; exit 1; }
+
+tasks=("$@")
+pids=()
+task_for_pid=()
+results_dir="$(mktemp -d)"
+trap 'rm -rf "$results_dir"' EXIT
+
+wait_one() {
+  local pid="$1" tid="$2" rc=0
+  wait "$pid" 2>/dev/null || rc=$?
+  echo "$rc" > "$results_dir/$tid.rc"
+  local last_line
+  last_line="$(tail -1 "$FORGE/logs/$tid/summary.txt" 2>/dev/null || echo "rc=$rc")"
+  echo "[$tid] finished (rc=$rc): $last_line"
+}
+
+active=0
+idx=0
+for tid in "${tasks[@]}"; do
+  while [ "$active" -ge "$jobs" ]; do
+    # Wait for the oldest active job
+    wait_one "${pids[0]}" "${task_for_pid[0]}"
+    pids=("${pids[@]:1}")
+    task_for_pid=("${task_for_pid[@]:1}")
+    active=$((active - 1))
+  done
+
+  echo "[$tid] starting..."
+  bash "$FORGE/bin/run" "$tid" > "$results_dir/$tid.stdout" 2>&1 &
+  pids+=("$!")
+  task_for_pid+=("$tid")
+  active=$((active + 1))
+  idx=$((idx + 1))
+done
+
+for i in "${!pids[@]}"; do
+  wait_one "${pids[$i]}" "${task_for_pid[$i]}"
+done
+
+echo ""
+echo "=== Batch Summary ==="
+overall=0
+for tid in "${tasks[@]}"; do
+  rc="$(cat "$results_dir/$tid.rc" 2>/dev/null || echo 1)"
+  [ "$rc" -ne 0 ] && overall=1
+  sum="$(tail -2 "$FORGE/logs/$tid/summary.txt" 2>/dev/null | tr '\n' ' ' || echo "no summary")"
+  printf "%-36s rc=%s  %s\n" "$tid" "$rc" "$sum"
+done
+exit "$overall"

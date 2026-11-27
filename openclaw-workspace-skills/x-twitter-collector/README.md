@@ -194,7 +194,7 @@ skills/x-twitter-collector/
 ### 报告保存
 ```bash
 # 建议保存路径
-/Users/chendongtao/.openclaw/workspace/reports/
+/Users/<USER>/.openclaw/workspace/reports/
   ├── elonmusk-2026-02-27.md
   ├── NASA-2026-02-27.md
   └── weekly-summary-2026-W09.md

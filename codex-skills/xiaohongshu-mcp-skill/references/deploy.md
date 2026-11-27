@@ -79,11 +79,11 @@ claude mcp add --transport http xiaohongshu-mcp http://localhost:18060/mcp
 
 ## 本机实际部署路径
 
-项目目录: `/Users/handi7/Documents/agentic-coding-projects/projects/xiaohongshu-mcp`
+项目目录: `/Users/<USER>/Documents/agentic-coding-projects/projects/xiaohongshu-mcp`
 
 启动服务:
 ```bash
-cd /Users/handi7/Documents/agentic-coding-projects/projects/xiaohongshu-mcp
+cd /Users/<USER>/Documents/agentic-coding-projects/projects/xiaohongshu-mcp
 nohup ./bin/xiaohongshu-mcp-darwin-arm64 > mcp.log 2>&1 &
 ```
 

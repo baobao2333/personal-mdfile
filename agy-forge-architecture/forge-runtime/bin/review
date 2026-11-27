@@ -1,0 +1,257 @@
+#!/bin/bash
+# L1 independent review by fresh Pi sessions (multi-angle orthogonal + cross-model by default).
+# Sees spec + public checks + diff only (never executor's report or hidden accept check).
+# Usage: bin/review <id>   Prints {"verdict":"pass|fail|error","issues":[...],"premise":"","reviewers":{...}} to stdout.
+set -uo pipefail
+id="${1:?usage: review <id>}"
+source "$(dirname "$0")/lib.sh"
+base="$(cat "$state/base")"
+review_mode="${REVIEW_MODE:-multi}"
+
+head_sha="${FORGE_GATE_HEAD:-$(git -C "$REPO" rev-parse --verify "task/$id")}"
+# Reviewers read the same immutable commit as the diff, not a moving executor tree.
+review_tmp="$(mktemp -d)" || exit 1
+wt="$review_tmp/$id"
+trap 'git -C "$REPO" worktree remove --force "$wt"; rm -rf "$review_tmp"' EXIT
+trap 'exit 1' HUP INT TERM
+git -C "$REPO" worktree add --detach -q "$wt" "$head_sha" || exit 1
+
+dbytes="$(diff_bytes "$base" "$head_sha")"
+diffstat="$(git -C "$REPO" diff --stat "$base" "$head_sha" 2>/dev/null)"
+trunc_note=""
+if [ "${dbytes:-0}" -gt 200000 ]; then
+  trunc_note="[DIFF TRUNCATED: total ${dbytes} bytes > 200000 limit. Check diff --stat below and use read/grep in $wt to inspect remaining files!]"
+fi
+
+checks_section=""
+if [ -f "$task/smoke.sh" ]; then
+  checks_section="${checks_section}
+### smoke.sh
+$(cat "$task/smoke.sh")"
+fi
+if [ -f "$task/check.sh" ]; then
+  checks_section="${checks_section}
+### check.sh
+$(cat "$task/check.sh")"
+fi
+
+warns_section=""
+if [ -n "${GATE_WARNS:-}" ]; then
+  warns_section="
+## 门禁告警 (重点核查)
+$GATE_WARNS"
+fi
+
+shared_context="## spec
+$(cat "$task/spec.md")
+
+## 公开验收脚本${checks_section:-
+(无公开脚本)}
+$warns_section
+
+## diff --stat (${dbytes} bytes)
+$diffstat
+$trunc_note
+
+## diff
+$(git -C "$REPO" diff "$base" "$head_sha" | head -c 200000)"
+
+cur_round="${FORGE_ROUND:-1}"
+if [ "$cur_round" -le 1 ]; then
+  premise_instruction="另外仅在核实到代码事实矛盾时填写 premise: spec 里的客观代码事实陈述（如\"X 依赖 Y\"、\"数据只能从 Z 拿\"）在仓库里是否不成立，或仓库已有现成机制可直接复用从而有根本更短做法？有就写进 premise 字段并附 文件:行号 证据；严禁质疑或否定 spec 已明确要求的产品/UI/文案规则。没有则写空字符串。premise 不影响 verdict。"
+else
+  premise_instruction="本轮为第 ${cur_round} 轮收敛复核，不再重复评判任务本身该不该做，premise 固定写空字符串 \"\"（仅在 issues 中报告真实代码缺陷或新引入的 spec 违例）。"
+fi
+
+logic_prompt="你是代码审查者 A（深度逻辑、副作用与规格合规审计专家），非常感谢你细致严谨地守护代码质量！请独立判断这次改动是否满足任务要求且无回归。不要修改任何文件。
+仓库: $wt (只读参考，必须主动用 read/grep/find/ls 核查调用方和上下文，不要只看 diff)
+职责边界:
+- 严禁对代码风格、命名偏好吹毛求疵，严禁把 spec 已明确要求的产品交互/文案设定判为缺陷。
+- 必须核查：
+  1) 是否满足 spec 的每项要求；
+  2) 用 grep 排查本次改动涉及的共享函数、默认参数、路由/表配置的所有下游调用方（例如搜索、推荐、推送、子 tab、批处理任务等），确认不会误伤非目标路径；
+  3) 核查边界条件与不变量：小数据集/空集、翻页游标与滚动发布兼容性、schema/配置校验（未知字段、重复键、非法类型）、并发/状态错误或明显性能退化；
+  4) 是否存在靠硬编码/绕过/改弱测试让检查通过的 spec-gaming 行为；
+  5) 若改动涉及跨端/跨仓契约（如声称客户端零改动），标注所有未在当前仓核实的前提风险。
+- 仅在发现真实代码问题时报告，并确保 file 与 line（真实行号）可在工作区核实。
+- 仅以下问题标 high/med 并判 fail：不满足 spec.md 或 spec-gaming；经 grep 核实、真实可达的下游调用回归；单一现实运行故障（常规网络重试/超时、重试时令牌过期、空/小数据集、应用重启）即导致资金/账本/状态/UI 损坏；生产配置下可达的安全或隔离缺陷。
+- spec.md 未要求的多故障巧合（如操作中途 AB 分组切换 + 滚动发布未排空的 worker 版本偏差）、假定调试/旧模式关闭生产强制的鉴权或安全开关、用户流量不可达的合成内部管理输入（1e308、NaN）、为理论兼容性竞态要求未指定的新持久化 schema，均标 low。没有 high/med 则判 pass。
+$premise_instruction
+只输出一个 JSON 对象，不要代码块，不要其他文字:
+{\"verdict\":\"pass\"|\"fail\",\"issues\":[{\"severity\":\"high|med|low\",\"file\":\"...\",\"line\":0,\"msg\":\"...\"}],\"premise\":\"\"}
+
+$shared_context"
+
+style_prompt="你是代码审查者 B（安全与简洁性审计专家），感谢你把关代码安全性与干净度！请独立审查这次改动的质量风险。不要修改任何文件。
+仓库: $wt (只读参考，可用 read/grep/find/ls 查看上下文)
+职责边界:
+- 不要重复评估业务规格是否满足（由审查者 A 负责）。
+- 只核查：1) 安全漏洞（注入、鉴权边界、敏感信息泄露、命令拼接）；2) 明显过度防御（宽泛 try/except/catch 吞异常、对内部不变量做冗余检查、未要求的死 fallback 分支、无意义包装层）；3) 明显死代码。
+- 仅真实安全漏洞、宽泛 try/except/catch 吞掉真实错误，或破坏调用方/契约的死代码与重复层才标 high/med 并判 fail。轻微风格和防御性建议标 low；没有 high/med 则判 pass。
+- 确保 file 与 line（真实行号）可在工作区核实。
+只输出一个 JSON 对象，不要代码块，不要其他文字:
+{\"verdict\":\"pass\"|\"fail\",\"issues\":[{\"severity\":\"high|med|low\",\"file\":\"...\",\"line\":0,\"msg\":\"...\"}],\"premise\":\"\"}
+
+$shared_context"
+
+extract_json() {
+  local logfile="$1"
+  local out
+  out="$(lasttext "$logfile" | sed -e 's/^```json//' -e 's/^```//' | tr -d '\r')"
+  printf '%s\n' "$out" | perl -0ne 'print $1 if /(\{.*\})/s' | jq -cse '
+    def nonblank: type == "string" and test("\\S");
+    def issue: type == "object" and (.severity | IN("high", "med", "low"))
+      and (.file | nonblank) and (.msg | nonblank)
+      and (.line | type == "number" and . >= 0 and . == floor);
+    select(length == 1) | .[0] |
+    select(type == "object" and (.verdict | IN("pass", "fail"))
+      and (.issues | type == "array" and all(.[]; issue)))' 2>/dev/null
+}
+
+run_reviewer() {
+  local logfile="$1" model="$2" prompt="$3" attempt out
+  for attempt in 1 2; do
+    if ( cd "$wt" && pi_run 1800 "$logfile" --no-session --model "$model" ${review_targs[@]+"${review_targs[@]}"} --tools read,grep,find,ls "$prompt" ) \
+      && out="$(extract_json "$logfile")"; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+  done
+  return 1
+}
+
+logic_log="$state/review-logic.jsonl"
+style_log="$state/review-style.jsonl"
+logic_res="$review_tmp/logic.result"
+style_res="$review_tmp/style.result"
+logic_model="$PI_REVIEW_LOGIC_MODEL"
+style_model="$PI_REVIEW_STYLE_MODEL"
+logic_rc=0
+style_rc=0
+
+review_targs=()
+[ -n "${PI_REVIEW_THINKING:-}" ] && review_targs=(--thinking "$PI_REVIEW_THINKING")
+
+if [ "$review_mode" = "single" ]; then
+  logic_model="$PI_REVIEW_MODEL"
+  run_reviewer "$logic_log" "$logic_model" "$logic_prompt" > "$logic_res" || logic_rc=$?
+  printf '%s\n' '{"verdict":"pass","issues":[],"premise":""}' > "$style_res"
+else
+  if [ -x "$FORGE/bin/sched" ]; then
+    resolved_style="$(FORGE_SCHED_DIR="$FORGE_SCHED_DIR" SOL_MAX_PROCS="$SOL_MAX_PROCS" \
+      FORGE_EXEC_SCHED="$FORGE_EXEC_SCHED" PI_EXEC_OVERFLOW_MODEL="$PI_EXEC_OVERFLOW_MODEL" \
+      "$FORGE/bin/sched" pick-style --default-model "$PI_REVIEW_STYLE_MODEL" 2>/dev/null || true)"
+    [ -n "$resolved_style" ] && style_model="$resolved_style"
+  fi
+  run_reviewer "$logic_log" "$logic_model" "$logic_prompt" > "$logic_res" &
+  pid_logic=$!
+  run_reviewer "$style_log" "$style_model" "$style_prompt" > "$style_res" &
+  pid_style=$!
+  wait "$pid_logic" || logic_rc=$?
+  wait "$pid_style" || style_rc=$?
+fi
+
+# Deterministic pre-flight grounding + merge of multi-angle review results
+python3 - "$wt" "$REPO" "$base" "$head_sha" "$review_mode" "$logic_model" "$style_model" \
+  "$logic_res" "$style_res" "$logic_rc" "$style_rc" <<'PY'
+import json, os, subprocess, sys
+
+wt, repo, base, head, mode, m_logic, m_style, logic_path, style_path, logic_rc, style_rc = sys.argv[1:]
+
+
+def load_reviewer(path, rc):
+    if rc != "0":
+        return {"verdict": "error"}
+    with open(path, encoding="utf-8") as fp:
+        return json.load(fp)
+
+
+logic = load_reviewer(logic_path, logic_rc)
+style = load_reviewer(style_path, style_rc)
+
+changed_files = set(
+    subprocess.check_output(
+        ["git", "-C", repo, "diff", "--name-only", base, head],
+        text=True,
+        stderr=subprocess.DEVNULL,
+    ).splitlines()
+)
+
+wt_real = os.path.realpath(wt)
+
+def ground_issue(issue, source_tag):
+    f, line = issue["file"].strip(), int(issue["line"])
+    sev, msg = issue["severity"], issue["msg"].strip()
+
+    external_abs = False
+    if f != "-" and os.path.isabs(f):
+        f_real = os.path.realpath(f)
+        if f_real.startswith(wt_real + os.sep):
+            f = os.path.relpath(f_real, wt_real)
+        else:
+            external_abs = True
+
+    # Ground file:line against actual worktree/diff
+    if external_abs:
+        sev = "low"
+        msg = f"[unverified file] {msg}"
+    elif f != "-":
+        full_path = os.path.join(wt, f)
+        if not os.path.isfile(full_path):
+            if f not in changed_files:
+                # Hallucinated file path not in worktree or diff: downgrade to low and tag
+                sev = "low"
+                msg = f"[unverified file] {msg}"
+        elif line > 0:
+            with open(full_path, "rb") as fp:
+                total_lines = sum(1 for _ in fp)
+            if line > total_lines:
+                sev = "low" if sev == "med" else sev
+                msg = f"[unverified line {line}>{total_lines}] {msg}"
+                line = total_lines
+
+    return {
+        "severity": sev,
+        "file": f,
+        "line": line,
+        "msg": f"[{source_tag}] {msg}",
+    }
+
+severity_order = {"high": 0, "med": 1, "low": 2}
+merged = []
+seen = {}
+for tag, obj in (("logic", logic), ("style", style)):
+    for iss in obj.get("issues") or []:
+        g = ground_issue(iss, tag)
+        key = (g["file"], g["line"], g["msg"])
+        if key not in seen:
+            seen[key] = g
+            merged.append(g)
+        elif severity_order[g["severity"]] < severity_order[seen[key]["severity"]]:
+            seen[key]["severity"] = g["severity"]
+
+merged.sort(key=lambda issue: severity_order[issue["severity"]])
+for number, issue in enumerate(merged, 1):
+    issue["id"] = f"I{number}"
+
+v_logic = logic.get("verdict")
+v_style = style.get("verdict")
+valid = ("pass", "fail")
+if v_logic not in valid or (mode != "single" and v_style not in valid):
+    verdict = "error"
+else:
+    verdict = "fail" if any(issue["severity"] in ("high", "med") for issue in merged) else "pass"
+
+result = {
+    "head_sha": head,
+    "verdict": verdict,
+    "issues": merged,
+    "premise": str(logic.get("premise", "") or "").strip(),
+    "reviewers": {
+        "mode": mode,
+        "logic": {"model": m_logic, "verdict": v_logic},
+        **({"style": {"model": m_style, "verdict": v_style}} if mode != "single" else {}),
+    },
+}
+print(json.dumps(result, ensure_ascii=False))
+PY

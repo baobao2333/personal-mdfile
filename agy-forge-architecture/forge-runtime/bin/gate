@@ -1,0 +1,110 @@
+#!/bin/bash
+# L0 scripted gate. Usage: bin/gate <id>
+# Prints one line per check to stdout; full check outputs go to logs/<id>/{smoke,check,accept}.out.
+# Exit 0 = pass, 1 = fail, 2 = valid blocked (premise/env/permission only).
+set -uo pipefail
+id="${1:?usage: gate <id>}"
+source "$(dirname "$0")/lib.sh"
+base="$(cat "$state/base")"
+head_sha="${FORGE_GATE_HEAD:-$(git -C "$REPO" rev-parse --verify "task/$id")}"
+fail=0
+ok()   { echo "ok   $*"; }
+bad()  { echo "FAIL $*"; fail=1; }
+warn() { echo "WARN $*"; }
+
+[ "$(criteria_sha)" = "$(cat "$state/criteria.sha")" ] \
+  && ok "criteria unchanged" || bad "spec/check/scope/accept files modified during task"
+
+changed="$(git -C "$REPO" diff --name-only "$base" "$head_sha" 2>/dev/null)"
+if [ -f "$task/scope" ]; then
+  out=""
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    hit=0
+    while IFS= read -r pat || [ -n "$pat" ]; do
+      [ -z "$pat" ] && continue
+      case "$f" in $pat) hit=1; break ;; esac
+    done < "$task/scope"
+    [ $hit = 1 ] || out="$out $f"
+  done <<< "$changed"
+  [ -z "$out" ] && ok "scope respected" || bad "out of scope:$out"
+fi
+
+dirty="$(git -C "$wt" status --porcelain 2>/dev/null | head -5)"
+st="$(jq -r '.state // "none"' "$task/status.json" 2>/dev/null || echo none)"
+note="$(jq -r '.note // ""' "$task/status.json" 2>/dev/null || echo "")"
+
+if [ "$st" = blocked ]; then
+  trimmed="$(printf '%s' "$note" | sed -e 's/^[[:space:]]*//')"
+  valid_block=0
+  case "$trimmed" in
+    前提:*|前提：*|PREMISE:*|环境:*|环境：*|ENV:*|权限:*|权限：*|PERMISSION:*)
+      valid_block=1
+      ;;
+  esac
+  if [ "$valid_block" = 1 ] && [ "$fail" = 0 ]; then
+    [ -n "$dirty" ] && warn "uncommitted changes left on blocked worktree: $(echo "$dirty" | tr '\n' ' ')"
+    echo "BLOCKED $note"
+    exit 2
+  elif [ "$valid_block" = 1 ]; then
+    bad "blocked worktree violated criteria or scope: $note"
+    exit 1
+  else
+    bad "invalid-block: '$note' (only 前提: with file:line, 环境:, or 权限: may block; decide internal details yourself)"
+  fi
+fi
+
+[ "$st" = done ] && ok "status done" || bad "status=$st (expected done)"
+
+n="$(git -C "$REPO" rev-list --count "$base..$head_sha" 2>/dev/null || echo 0)"
+[ "$n" -gt 0 ] && ok "$n new commit(s)" || bad "no commits on task/$id"
+
+[ -z "$dirty" ] && ok "worktree clean" || bad "uncommitted: $(echo "$dirty" | tr '\n' ' ')"
+
+echo "     diff: $(git -C "$REPO" diff --shortstat "$base" "$head_sha" 2>/dev/null)"
+echo "     churn: $(diff_churn "$base" "$head_sha") bytes: $(diff_bytes "$base" "$head_sha")"
+
+if [ "$n" -gt 0 ]; then
+  if [ ! -f "$task/scope" ] && [ -n "$changed" ]; then
+    test_hits=""
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      case "$f" in
+        *test*|*Test*|*spec*|*check*|*fixture*) test_hits="$test_hits $f" ;;
+      esac
+    done <<< "$changed"
+    [ -n "$test_hits" ] && warn "touched test-like file(s) without explicit scope:$test_hits"
+  fi
+
+  def_cnt="$(git -C "$REPO" diff "$base" "$head_sha" 2>/dev/null \
+    | awk '/^\+/ && !/^\+\+\+/ && /(except[ \t]*:|except[ \t]+Exception|catch[ \t]*\()/ {c++} END {print c+0}')"
+  [ "${def_cnt:-0}" -ge 3 ] && warn "added $def_cnt broad try/except/catch handlers in diff"
+fi
+
+if [ "$fail" = 0 ] || [ "$st" != blocked ]; then
+  co="$state/checkout"
+  git -C "$REPO" worktree remove --force "$co" 2>/dev/null || true
+  git -C "$REPO" worktree add -q --detach "$co" "$head_sha" || { bad "cannot check out $head_sha"; exit 1; }
+
+  ran_any=0
+  run_check() {
+    local label="$1" script="$2" outfile="$3"
+    ran_any=1
+    ( unset FORGE_GATE_HEAD; cd "$co" && perl -e 'alarm shift; exec @ARGV' "${CHECK_TIMEOUT:-600}" bash "$script" ) > "$outfile" 2>&1
+    local rc=$?
+    if [ "$rc" = 0 ]; then
+      ok "$label passed"
+    else
+      bad "$label exit $rc: $(tail -5 "$outfile" | tr '\n' ' ')"
+    fi
+  }
+
+  [ -f "$task/smoke.sh" ] && run_check "smoke.sh" "$task/smoke.sh" "$state/smoke.out"
+  [ -f "$task/check.sh" ] && run_check "check.sh" "$task/check.sh" "$state/check.out"
+  [ -f "$accept_dir/check.sh" ] && run_check "accept" "$accept_dir/check.sh" "$state/accept.out"
+  [ "$ran_any" = 1 ] || bad "no check script found (need check.sh or accept/$id/check.sh)"
+
+  git -C "$REPO" worktree remove --force "$co" 2>/dev/null || true
+fi
+
+exit $fail

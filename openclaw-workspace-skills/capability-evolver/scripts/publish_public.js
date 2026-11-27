@@ -53,9 +53,9 @@ function resolveClawhubExecutable() {
   }
   // Common npm global bin location on Windows.
   const candidates = [
-    'C:\\Users\\Administrator\\AppData\\Roaming\\npm\\clawhub.cmd',
-    'C:\\Users\\Administrator\\AppData\\Roaming\\npm\\clawhub.exe',
-    'C:\\Users\\Administrator\\AppData\\Roaming\\npm\\clawhub.ps1',
+    'C:\\Users\\<USER>\\AppData\\Roaming\\npm\\clawhub.cmd',
+    'C:\\Users\\<USER>\\AppData\\Roaming\\npm\\clawhub.exe',
+    'C:\\Users\\<USER>\\AppData\\Roaming\\npm\\clawhub.ps1',
   ];
   for (const p of candidates) {
     try {

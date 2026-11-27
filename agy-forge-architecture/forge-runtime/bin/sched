@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+"""Concurrency-aware executor model scheduler for Forge.
+
+Prioritizes primary coding model (default openai/gpt-6.2-sol) up to SOL_MAX_PROCS
+concurrent execution slots via non-blocking kernel flock leases, spilling excess
+executions immediately to overflow model (default google/gemini-4-neon at xhigh).
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default
+
+
+def _sched_dir() -> Path:
+    raw = os.environ.get("FORGE_SCHED_DIR", "").strip()
+    if raw:
+        return Path(raw)
+    forge = Path(__file__).resolve().parent.parent
+    return forge / "logs" / ".sched"
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            json.dump(payload, fp, ensure_ascii=False)
+            fp.write("\n")
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def _read_occupied_slots(sdir: Path, max_procs: int) -> list[dict]:
+    occupied: list[dict] = []
+    if not sdir.is_dir():
+        return occupied
+    # Scan numbered slot files without calling flock so status never contends with LOCK_NB claimants.
+    slot_files = sorted(sdir.glob("sol-slot-*.lock"))
+    for sf in slot_files:
+        m_num = sf.stem.rsplit("-", 1)[-1]
+        try:
+            slot_no = int(m_num)
+        except ValueError:
+            continue
+        if max_procs > 0 and slot_no > max_procs:
+            continue
+        try:
+            raw = sf.read_text(encoding="utf-8", errors="replace").strip()
+            if not raw:
+                continue
+            meta = json.loads(raw)
+            pid = int(meta.get("pid", 0))
+            if pid <= 0:
+                continue
+            os.kill(pid, 0)
+        except (OSError, ValueError, json.JSONDecodeError, TypeError):
+            continue
+        occupied.append(meta)
+    return occupied
+
+
+def _try_acquire_sol_slot(
+    sdir: Path,
+    max_procs: int,
+    task_id: str,
+    round_no: int,
+    model: str,
+    thinking: str,
+) -> tuple[int | None, int | None]:
+    if max_procs <= 0:
+        return None, None
+    sdir.mkdir(parents=True, exist_ok=True)
+    for slot in range(1, max_procs + 1):
+        lock_path = sdir / f"sol-slot-{slot}.lock"
+        # CRITICAL: Never pass O_TRUNC before acquiring LOCK_EX, or contenders erase active metadata.
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+        os.set_inheritable(fd, False)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            continue
+        except OSError:
+            os.close(fd)
+            continue
+        return fd, slot
+    return None, None
+
+
+def _write_slot_meta(fd: int, payload: dict) -> None:
+    data = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+    os.ftruncate(fd, 0)
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.write(fd, data)
+
+
+def _clear_and_close_slot(fd: int | None) -> None:
+    if fd is None:
+        return
+    try:
+        os.ftruncate(fd, 0)
+    except OSError:
+        pass
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _terminate_pgroup(proc: subprocess.Popen, grace_sec: float = 3.0) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError:
+        proc.terminate()
+    deadline = time.monotonic() + grace_sec
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(0.05)
+    if proc.poll() is None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        except OSError:
+            proc.kill()
+        try:
+            proc.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    sdir = _sched_dir()
+    max_procs = _env_int("SOL_MAX_PROCS", 2)
+    primary = os.environ.get("PI_EXEC_MODEL", "openai/gpt-6.2-sol")
+    overflow = os.environ.get("PI_EXEC_OVERFLOW_MODEL", "google/gemini-4-neon")
+    overflow_thinking = os.environ.get("PI_EXEC_OVERFLOW_THINKING", os.environ.get("PI_EXEC_THINKING", "xhigh"))
+    sched_mode = os.environ.get("FORGE_EXEC_SCHED", "auto")
+    occupied = _read_occupied_slots(sdir, max_procs)
+    now = int(time.time())
+    for item in occupied:
+        started = int(item.get("started_at", now))
+        item["elapsed_s"] = max(0, now - started)
+    out = {
+        "sched_mode": sched_mode,
+        "primary_model": primary,
+        "overflow_model": overflow,
+        "overflow_thinking": overflow_thinking,
+        "sol_max_procs": max_procs,
+        "occupied_exec_slots": len(occupied),
+        "slots": occupied,
+    }
+    if args.json:
+        print(json.dumps(out, ensure_ascii=False))
+    else:
+        print(
+            f"sched={sched_mode} primary={primary} overflow={overflow}:{overflow_thinking} "
+            f"occupied_exec_slots={len(occupied)}/{max_procs}"
+        )
+        for item in occupied:
+            print(
+                f"  [slot {item.get('slot')}] pid={item.get('pid')} child={item.get('child_pid')} "
+                f"task={item.get('task')} round={item.get('round')} elapsed={item.get('elapsed_s')}s"
+            )
+    return 0
+
+
+def cmd_pick_style(args: argparse.Namespace) -> int:
+    """Resolve style reviewer model without claiming an executor coding slot."""
+    style_model = args.default_model
+    sched_mode = os.environ.get("FORGE_EXEC_SCHED", "auto").strip().lower()
+    sol_model = "openai/gpt-6.2-sol"
+    overflow_model = os.environ.get("PI_EXEC_OVERFLOW_MODEL", "google/gemini-4-neon")
+    max_procs = _env_int("SOL_MAX_PROCS", 2)
+    if sched_mode not in ("0", "off", "fixed", "false") and style_model == sol_model:
+        occupied = _read_occupied_slots(_sched_dir(), max_procs)
+        if len(occupied) >= max_procs:
+            style_model = overflow_model
+    print(style_model)
+    return 0
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    sdir = _sched_dir()
+    max_procs = _env_int("SOL_MAX_PROCS", 2)
+    sched_mode = os.environ.get("FORGE_EXEC_SCHED", "auto").strip().lower()
+    auto_enabled = sched_mode not in ("0", "off", "fixed", "false") and not args.fixed
+    sol_model = "openai/gpt-6.2-sol"
+
+    requested_model = args.requested_model
+    primary_thinking = args.thinking or ""
+    overflow_model = args.overflow_model
+    overflow_thinking = args.overflow_thinking or primary_thinking
+    avoid_model = args.avoid_model or ""
+    fallback_model = args.fallback_model or ""
+
+    slot_fd: int | None = None
+    slot_no: int | None = None
+    chosen_model = requested_model
+    chosen_thinking = primary_thinking
+    sched_reason = "fixed"
+
+    try:
+        if avoid_model and chosen_model == avoid_model:
+            if avoid_model == sol_model:
+                chosen_model = overflow_model
+                chosen_thinking = overflow_thinking
+                sched_reason = "transport-failover->overflow"
+            else:
+                # Avoiding non-sol (e.g. neon failed transport): try sol slot first, else non-neon fallback.
+                slot_fd, slot_no = _try_acquire_sol_slot(
+                    sdir, max_procs, args.task, args.round, sol_model, primary_thinking
+                )
+                if slot_fd is not None:
+                    chosen_model = sol_model
+                    chosen_thinking = primary_thinking
+                    sched_reason = f"transport-failover->sol(slot={slot_no}/{max_procs})"
+                elif fallback_model and fallback_model != avoid_model:
+                    chosen_model = fallback_model
+                    chosen_thinking = primary_thinking
+                    sched_reason = "transport-failover->fallback"
+                else:
+                    chosen_model = sol_model
+                    chosen_thinking = primary_thinking
+                    sched_reason = "transport-failover->sol(unslotted)"
+        elif chosen_model == sol_model:
+            slot_fd, slot_no = _try_acquire_sol_slot(
+                sdir, max_procs, args.task, args.round, sol_model, primary_thinking
+            )
+            if slot_fd is not None:
+                sched_reason = f"sol(slot={slot_no}/{max_procs})"
+            elif auto_enabled:
+                if avoid_model and overflow_model == avoid_model and fallback_model and fallback_model != avoid_model:
+                    chosen_model = fallback_model
+                    chosen_thinking = primary_thinking
+                    sched_reason = "transport-failover->fallback(sol_busy)"
+                else:
+                    chosen_model = overflow_model
+                    chosen_thinking = overflow_thinking
+                    sched_reason = f"overflow(sol_busy={max_procs}/{max_procs})"
+            else:
+                sched_reason = "fixed-sol(unslotted)"
+        else:
+            sched_reason = "explicit-model"
+
+        now_ts = int(time.time())
+        if slot_fd is not None and slot_no is not None:
+            _write_slot_meta(
+                slot_fd,
+                {
+                    "slot": slot_no,
+                    "pid": os.getpid(),
+                    "child_pid": None,
+                    "task": args.task,
+                    "round": args.round,
+                    "model": chosen_model,
+                    "thinking": chosen_thinking,
+                    "started_at": now_ts,
+                },
+            )
+
+        if args.meta:
+            _atomic_write_json(
+                Path(args.meta),
+                {
+                    "task": args.task,
+                    "round": args.round,
+                    "requested_model": requested_model,
+                    "model": chosen_model,
+                    "thinking": chosen_thinking,
+                    "sched": sched_reason,
+                    "slot": slot_no,
+                    "sol_max_procs": max_procs,
+                    "started_at": now_ts,
+                },
+            )
+
+        pi_cmd = ["pi", "-p", "--mode", "json", "--model", chosen_model]
+        if chosen_thinking:
+            pi_cmd.extend(["--thinking", chosen_thinking])
+        if args.session_dir:
+            s_id = args.session_id
+            if not args.fresh_session and chosen_model != requested_model:
+                slug = chosen_model.replace("/", "-").replace(":", "-")
+                s_id = f"{s_id}-{slug}"
+            pi_cmd.extend(["--session-dir", args.session_dir, "--session-id", s_id])
+        pi_cmd.extend(args.pi_args)
+
+        log_path = Path(args.log)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        received_sig: list[int] = []
+        proc_holder: list[subprocess.Popen] = []
+
+        def _handle_sig(signum: int, _frame) -> None:
+            received_sig.append(signum)
+            if proc_holder:
+                _terminate_pgroup(proc_holder[0], grace_sec=2.0)
+
+        for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, _handle_sig)
+
+        with log_path.open("wb") as log_fp:
+            if received_sig:
+                return 128 + received_sig[0]
+            proc = subprocess.Popen(
+                pi_cmd,
+                stdout=log_fp,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+            proc_holder.append(proc)
+            if received_sig:
+                _terminate_pgroup(proc, grace_sec=2.0)
+                return 128 + received_sig[0]
+            if slot_fd is not None and slot_no is not None:
+                _write_slot_meta(
+                    slot_fd,
+                    {
+                        "slot": slot_no,
+                        "pid": os.getpid(),
+                        "child_pid": proc.pid,
+                        "task": args.task,
+                        "round": args.round,
+                        "model": chosen_model,
+                        "thinking": chosen_thinking,
+                        "started_at": now_ts,
+                    },
+                )
+            try:
+                rc = proc.wait(timeout=args.timeout if args.timeout > 0 else None)
+            except subprocess.TimeoutExpired:
+                _terminate_pgroup(proc, grace_sec=2.0)
+                rc = 142
+
+        if received_sig:
+            return 128 + received_sig[0]
+        return rc
+    finally:
+        _clear_and_close_slot(slot_fd)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="sched")
+    sub = parser.add_subparsers(dest="subcmd", required=True)
+
+    p_status = sub.add_parser("status")
+    p_status.add_argument("--json", action="store_true")
+
+    p_style = sub.add_parser("pick-style")
+    p_style.add_argument("--default-model", required=True)
+
+    p_run = sub.add_parser("run")
+    p_run.add_argument("--task", required=True)
+    p_run.add_argument("--round", type=int, required=True)
+    p_run.add_argument("--timeout", type=int, default=1800)
+    p_run.add_argument("--log", required=True)
+    p_run.add_argument("--meta", default="")
+    p_run.add_argument("--requested-model", required=True)
+    p_run.add_argument("--thinking", default="")
+    p_run.add_argument("--overflow-model", default="google/gemini-4-neon")
+    p_run.add_argument("--overflow-thinking", default="xhigh")
+    p_run.add_argument("--fallback-model", default="")
+    p_run.add_argument("--avoid-model", default="")
+    p_run.add_argument("--fixed", action="store_true")
+    p_run.add_argument("--session-dir", default="")
+    p_run.add_argument("--session-id", default="")
+    p_run.add_argument("--fresh-session", action="store_true")
+    p_run.add_argument("pi_args", nargs=argparse.REMAINDER)
+
+    ns = parser.parse_args()
+    if ns.subcmd == "run" and ns.pi_args and ns.pi_args[0] == "--":
+        ns.pi_args = ns.pi_args[1:]
+
+    if ns.subcmd == "status":
+        return cmd_status(ns)
+    if ns.subcmd == "pick-style":
+        return cmd_pick_style(ns)
+    if ns.subcmd == "run":
+        return cmd_run(ns)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
