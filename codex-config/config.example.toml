@@ -1,22 +1,16 @@
-# Minimal shareable subset of the personal configuration.
-# Replace model_instructions_file with your actual absolute path.
-# Context window and automatic compaction use the client's model defaults.
+# Minimal shareable subset of the personal Codex configuration.
+# Merge desired sections into ~/.codex/config.toml.
 
-model = "gpt-6.1-sol"
-model_provider = "openai"
-model_reasoning_effort = "xhigh"
-model_instructions_file = 'C:\path\to\.codex\gpt-base-instructions.md'
+model = "gpt-6.2-astra"
+model_reasoning_effort = "medium"
 
 [agents]
-default_subagent_model = "gpt-6-sol"
-default_subagent_reasoning_effort = "medium"
-max_concurrent_threads_per_session = 3
-max_depth = 1
+max_threads = 3
 
 [agents.sol_worker]
-description = "Task-scoped implementation and investigation requiring multi-step reasoning; reports to Astra."
+description = "Cross-file implementation, call-chain tracing, and root-cause fixes."
 config_file = "sol-worker.config.toml"
 
 [agents.luna_worker]
-description = "Task-scoped execution for clear, local, repeatable work; reports to Astra."
+description = "Bounded local edits and mechanical follow-ups."
 config_file = "luna-worker.config.toml"
